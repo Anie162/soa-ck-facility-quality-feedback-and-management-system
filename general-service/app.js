@@ -69,7 +69,7 @@ app.listen(port, () => {
   const docsUrl = `http://localhost:${port}/docs`;
   console.log(`General API Docs is running on ${docsUrl}`);
 
-  if (!isDev) {
+  if (isDev) {
     try {
       openurl.open(docsUrl);
     } catch (err) {
