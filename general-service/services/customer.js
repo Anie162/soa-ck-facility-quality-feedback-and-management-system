@@ -10,54 +10,67 @@ const customerController = {
     if (!fullName || !phone || !email || !password) {
       return res.status(400).json({ message: "Thiếu thông tin" });
     }
-    const customer = await Customer.findByEmail(email);
-    if (customer)
+
+    const customerExists = await Customer.findByEmail(email);
+    if (customerExists)
       return res
         .status(409)
         .json({ message: "Tài khoản tương ứng với email đã tồn tại." });
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    await Customer.create({ fullName, phone, email, password: hashedPassword });
+    await Customer.createCustomer({
+      fullName,
+      phone,
+      email,
+      password: hashedPassword,
+    });
 
     res.json({ message: "Đăng kí tài khoản khách hàng thành công!" });
   }),
 
   Login: asyncHandler(async (req, res) => {
     const { email, password } = req.body;
+
     const customer = await Customer.findByEmail(email);
     if (!customer)
       return res
         .status(404)
         .json({ message: "Không tìm thấy tài khoản tương ứng với email." });
 
-    const isMatch = await bcrypt.compare(password, customer.password);
+    const isMatch = await bcrypt.compare(password, customer.CustomerPassword);
     if (!isMatch)
       return res.status(401).json({ message: "Email hoặc mật khẩu sai." });
 
     const token = jwt.sign(
-      { id: customer.id, email: customer.email },
+      { id: customer.CustomerID, email: customer.CustomerEmail },
       process.env.JWT_SECRET,
       { expiresIn: "1h" }
     );
 
-    res.json({ message: "Đăng nhập thành công", token, customer });
+    res.json({
+      message: "Đăng nhập thành công",
+      token,
+      customer,
+    });
   }),
 
   Withdraw: asyncHandler(async (req, res) => {
     const { customerId, amount } = req.body;
+
     if (!customerId || !amount || amount <= 0) {
       return res
         .status(400)
         .json({ message: "Thiếu thông tin hoặc số tiền không hợp lệ." });
     }
+
     const customer = await Customer.findById(customerId);
     if (!customer)
       return res
         .status(404)
         .json({ message: "Không tìm thấy khách hàng tương ứng." });
 
-    if (customer.balance < amount) {
+    if (customer.CustomerBalance < amount) {
       return res.status(400).json({ message: "Số dư không đủ" });
     }
 
@@ -68,7 +81,7 @@ const customerController = {
   Deposit: asyncHandler(async (req, res) => {
     const { customerEmail, amount } = req.body;
 
-    if (!customerEmail || amount == null || amount <= 0) {
+    if (!customerEmail || !amount || amount <= 0) {
       return res
         .status(400)
         .json({ message: "Thiếu thông tin hoặc số tiền nạp không hợp lệ." });
@@ -82,14 +95,14 @@ const customerController = {
         .json({ message: "Không tìm thấy khách hàng tương ứng với email." });
     }
 
-    await Customer.deposit(customer.id, amount);
+    await Customer.deposit(customer.CustomerID, amount);
     res.json({ message: "Nạp tiền thành công" });
   }),
 
   DepositWithID: asyncHandler(async (req, res) => {
     const { customerID, amount } = req.body;
 
-    if (!customerID || amount == null || amount <= 0) {
+    if (!customerID || !amount || amount <= 0) {
       return res
         .status(400)
         .json({ message: "Thiếu thông tin hoặc số tiền nạp không hợp lệ." });
@@ -103,7 +116,7 @@ const customerController = {
         .json({ message: "Không tìm thấy khách hàng tương ứng với ID." });
     }
 
-    await Customer.deposit(customer.id, amount);
+    await Customer.deposit(customer.CustomerID, amount);
     res.json({ message: "Nạp tiền thành công" });
   }),
 
@@ -125,23 +138,22 @@ const customerController = {
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     await Customer.updatePassword(email, hashedPassword);
+
     res.json({ message: "Mật khẩu đã được cập nhật" });
   }),
 
   GetBalance: asyncHandler(async (req, res) => {
-    const { customerID } = req.params; 
+    const { customerID } = req.params;
 
-    if (!customerID) {
+    if (!customerID)
       return res.status(400).json({ message: "Thiếu thông tin customerID." });
-    }
 
     const balance = await Customer.getBalance(customerID);
 
-    if (balance === null || balance === undefined) {
+    if (balance === null)
       return res
         .status(404)
         .json({ message: "Không tìm thấy khách hàng tương ứng." });
-    }
 
     res.json({ customerID, balance });
   }),
