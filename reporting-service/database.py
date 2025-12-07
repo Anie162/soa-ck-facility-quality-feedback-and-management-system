@@ -52,3 +52,4 @@ except Exception as e:
 # 4. Chọn database
 db = client["reporting_service"]
 reports_collection = db["reports"]
+complaints_collection = db["complaints"]

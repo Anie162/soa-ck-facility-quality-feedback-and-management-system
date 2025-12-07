@@ -3,22 +3,35 @@ from datetime import datetime
 from typing import Optional
 from enum import Enum
 
+# 1. Enum trạng thái (Giữ nguyên)
 class ReportStatus(str, Enum):
     WAITING = "WAITING"
     IN_PROGRESS = "IN_PROGRESS"
     COMPLETED = "COMPLETED"
     REJECTED = "REJECTED"
 
+# 2. ReportBase: Dùng cho việc UPDATE (PUT)
 class ReportBase(BaseModel):
-    ReportId: str
+    Title: Optional[str] = None
+    Content: Optional[str] = None
+    MediaURL: Optional[str] = None
+    Address: Optional[str] = None
+    Note: Optional[str] = None
+    Status: Optional[ReportStatus] = None 
+
+# 3. ReportCreate: Dùng cho việc CREATE (POST)
+# Đây là những trường người dùng BẮT BUỘC phải nhập
+class ReportCreate(BaseModel):
     Title: str
     Content: str
-    MediaURL: str
-    Address: str
-    Created_at: datetime = Field(default_factory=datetime.utcnow)
-    Updated_at: Optional[datetime] = None
-    Status: ReportStatus = Field(default=ReportStatus.WAITING)
-    Note: Optional[str] = None
+    MediaURL: str  # Bắt buộc
+    Address: str   # Bắt buộc
+    UserID: str    # Bắt buộc
 
-class Report(ReportBase):
-    UserID: str
+# 4. Report: Dùng cho việc RESPONSE (GET)
+class Report(ReportCreate):
+    ReportId: str
+    Status: ReportStatus = Field(default=ReportStatus.WAITING) 
+    Created_at: datetime
+    Updated_at: Optional[datetime] = None
+    Note: Optional[str] = None
