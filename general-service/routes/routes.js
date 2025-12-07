@@ -1,8 +1,7 @@
 const express = require("express");
 const otpController = require("../services/otp");
 const notificationController = require("../services/notification");
-const customerService = require("../services/customer");
-const { mediaService, upload } = require("../services/media");
+const userService = require("../services/user");
 
 const router = express.Router();
 
@@ -120,7 +119,7 @@ router.post("/email/send", notificationController.SendEmail);
 
 /**
  * @openapi
- * /api/customers/register:
+ * /api/users/register:
  *   post:
  *     tags: [User]
  *     summary: Đăng ký tài khoản khách hàng
@@ -139,11 +138,11 @@ router.post("/email/send", notificationController.SendEmail);
  *       200:
  *         description: Đăng ký thành công
  */
-router.post("/customers/register", customerService.Register);
+router.post("/users/register", userService.Register);
 
 /**
  * @openapi
- * /api/customers/login:
+ * /api/users/login:
  *   post:
  *     tags: [User]
  *     summary: Đăng nhập tài khoản khách hàng
@@ -160,12 +159,12 @@ router.post("/customers/register", customerService.Register);
  *       200:
  *         description: Đăng nhập thành công, trả về token
  */
-router.post("/customers/login", customerService.Login);
+router.post("/users/login", userService.Login);
 
 
 /**
  * @openapi
- * /api/customers/reset-password:
+ * /api/users/reset-password:
  *   post:
  *     tags: [User]
  *     summary: Đặt lại mật khẩu cho tài khoản khách hàng
@@ -182,8 +181,8 @@ router.post("/customers/login", customerService.Login);
  *       200:
  *         description: Cập nhật mật khẩu thành công
  */
-router.post("/customers/reset-password", customerService.ResetPassword);
+router.post("/users/reset-password", userService.ResetPassword);
 
 module.exports = router;
 
-// http://localhost:8000/api/customers/
+// http://localhost:8000/api/users/
