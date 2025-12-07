@@ -2,6 +2,7 @@ const express = require("express");
 const otpController = require("../services/otp");
 const notificationController = require("../services/notification");
 const customerService = require("../services/customer");
+const { mediaService, upload } = require("../services/media");
 
 const router = express.Router();
 
@@ -14,57 +15,84 @@ const router = express.Router();
  *     description: Gửi email thông báo
  *   - name: User
  *     description: Quản lý tài khoản User (Người báo cáo, Nhân viên tiếp nhận và điều phối xử lí, Nhân viên kỹ thuật tại hiện trường) và phân quyền cho từng người dùng
+ *   - name: Media
+ *     description: Quản lý upload, lấy và xóa file media (ảnh, video)
  */
 
 /**
  * @openapi
- * /api/send-otp:
+ * /api/otp/send:
  *   post:
  *     tags: [OTP]
- *     summary: Gửi mã OTP qua email
+ *     summary: Gửi mã OTP qua email (theo action)
+ *     description: "Gửi OTP cho một hành động cụ thể như đăng ký tài khoản hoặc đặt lại mật khẩu.\nCác hành động cần xác thực OTP: register, reset_password."
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
+ *             required:
+ *               - email
+ *               - action
  *             properties:
  *               email:
  *                 type: string
+ *                 example: "user@example.com"
+ *               action:
+ *                 type: string
+ *                 description: "Mục đích OTP (vd: register, reset_password)"
+ *                 example: "register"
  *     responses:
  *       200:
- *         description: OTP đã được gửi đến email
+ *         description: "OTP đã được gửi đến email"
  */
-router.post("/send-otp", otpController.SendOTP);
+router.post("/otp/send", otpController.SendOTP);
 
 /**
  * @openapi
- * /api/verify-otp:
+ * /api/otp/verify:
  *   post:
  *     tags: [OTP]
  *     summary: Xác thực mã OTP
+ *     description: "Kiểm tra OTP theo email và action. OTP có hiệu lực 5 phút."
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
+ *             required:
+ *               - email
+ *               - action
+ *               - code
  *             properties:
  *               email:
  *                 type: string
+ *                 example: "user@example.com"
+ *               action:
+ *                 type: string
+ *                 description: "Mục đích OTP (vd: register, reset_password)"
+ *                 example: "register"
  *               code:
  *                 type: string
+ *                 description: "Mã OTP 6 chữ số"
+ *                 example: "123456"
  *     responses:
  *       200:
- *         description: OTP hợp lệ
+ *         description: "OTP hợp lệ"
  *       401:
- *         description: OTP sai hoặc hết hạn
+ *         description: "OTP không đúng"
+ *       410:
+ *         description: "OTP đã hết hạn"
+ *       404:
+ *         description: "Không tìm thấy OTP cho email và action này"
  */
-router.post("/verify-otp", otpController.VerifyOTP);
+router.post("/otp/verify", otpController.VerifyOTP);
 
 /**
  * @openapi
- * /api/send-email:
+ * /api/email/send:
  *   post:
  *     tags: [Notification]
  *     summary: Gửi email thông báo
@@ -87,7 +115,7 @@ router.post("/verify-otp", otpController.VerifyOTP);
  *       200:
  *         description: Gửi email thành công
  */
-router.post("/send-email", notificationController.SendEmail);
+router.post("/email/send", notificationController.SendEmail);
 
 
 /**
@@ -134,68 +162,6 @@ router.post("/customers/register", customerService.Register);
  */
 router.post("/customers/login", customerService.Login);
 
-/**
- * @openapi
- * /api/customers/withdraw:
- *   post:
- *     tags: [User]
- *     summary: Rút tiền từ tài khoản khách hàng
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               customerId: { type: string }
- *               amount: { type: number }
- *     responses:
- *       200:
- *         description: Rút tiền thành công
- */
-router.post("/customers/withdraw", customerService.Withdraw);
-
-/**
- * @openapi
- * /api/customers/deposit:
- *   post:
- *     tags: [User]
- *     summary: Nạp tiền vào tài khoản khách hàng bằng email
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               customerEmail: { type: string }
- *               amount: { type: number }
- *     responses:
- *       200:
- *         description: Nạp tiền thành công
- */
-router.post("/customers/deposit", customerService.Deposit);
-
-/**
- * @openapi
- * /api/customers/deposit-with-id:
- *   post:
- *     tags: [User]
- *     summary: Nạp tiền vào tài khoản khách hàng bằng ID
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               customerID: { type: string }
- *               amount: { type: number }
- *     responses:
- *       200:
- *         description: Nạp tiền thành công
- */
-router.post("/customers/deposit-with-id", customerService.DepositWithID);
 
 /**
  * @openapi
@@ -217,23 +183,6 @@ router.post("/customers/deposit-with-id", customerService.DepositWithID);
  *         description: Cập nhật mật khẩu thành công
  */
 router.post("/customers/reset-password", customerService.ResetPassword);
-
-/**
- * @openapi
- * /api/customers/balance/{customerID}:
- *   get:
- *     tags: [User]
- *     summary: Lấy số dư tài khoản khách hàng
- *     parameters:
- *       - name: customerID
- *         in: path
- *         required: true
- *         schema: { type: string }
- *     responses:
- *       200:
- *         description: Trả về số dư tài khoản
- */
-router.get("/customers/balance/:customerID", customerService.GetBalance);
 
 module.exports = router;
 

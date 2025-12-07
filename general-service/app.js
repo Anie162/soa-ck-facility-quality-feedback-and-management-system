@@ -5,6 +5,8 @@ const swaggerJsdoc = require("swagger-jsdoc");
 const path = require("path");
 const cors = require("cors");
 const router = require("./routes/routes");
+const mediaRoutes = require("./routes/mediaRoute");
+
 const { connectDB } = require("./configs/database");
 const openurl = require("openurl");
 
@@ -62,6 +64,8 @@ app.use(
 
 // Routes
 app.use("/api", router);
+app.use("/api/media", mediaRoutes);
+
 
 const isDev = process.env.NODE_ENV === "development";
 
