@@ -43,4 +43,8 @@ coverage/
 .nyc_output
 *.tgz
 
+
+.env
+*.pem
+
 __pycache__/
