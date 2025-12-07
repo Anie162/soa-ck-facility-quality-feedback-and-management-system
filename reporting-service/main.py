@@ -16,7 +16,8 @@ tags_metadata = [
 ]
 
 app = FastAPI(
-    title="Reporting Service",
+    title="Infrastructure Report & Complaint API",
+    version="1.0.0",
     swagger_ui_parameters={"defaultModelsExpandDepth": -1},
     openapi_tags=tags_metadata
 )
