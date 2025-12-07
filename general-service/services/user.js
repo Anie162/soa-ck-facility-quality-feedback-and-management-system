@@ -3,6 +3,7 @@ const jwt = require("jsonwebtoken");
 const asyncHandler = require("express-async-handler");
 const User = require("../models/User");
 
+// ! NOT FINISH
 const userController = {
   Register: asyncHandler(async (req, res) => {
     const { fullName, phone, email, password } = req.body;

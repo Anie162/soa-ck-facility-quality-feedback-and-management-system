@@ -26,11 +26,15 @@ const mediaService = {
           return res.status(500).json({ message: "Upload failed" });
         }
 
+        const extension = req.file.originalname.split(".").pop().toLowerCase();
+        console.log(extension);
+
         // Lưu vào MongoDB
         const media = await Media.create({
           publicId: result.public_id,
           url: result.secure_url,
           resourceType: result.resource_type, // <- image | video | raw
+          extension,
         });
 
         return res.json({
@@ -39,10 +43,11 @@ const mediaService = {
           url: media.url,
           publicId: media.publicId,
           type: media.resourceType,
+          extension: media.extension,
         });
       }
     );
-
+    
     uploadStream.end(req.file.buffer);
   }),
 
@@ -53,16 +58,23 @@ const mediaService = {
     const media = await Media.findById(mediaId);
     if (!media) return res.status(404).json({ message: "Media not found" });
 
-    const url = cloudinary.url(media.publicId, {
-      resource_type: media.resourceType, // image | video | raw
-      secure: true,
-    });
+    let url;
+
+    // ! BUGS
+    if (media.resourceType === "raw") {
+      // File Excel, PDF, ZIP, CSV, ...
+      url = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/raw/upload/${media.publicId}.${media.extension}`;
+    } else {
+      // image | video
+      url = media.url; // image/video OK
+    }
 
     res.json({
-      message: "File fetched",
+      message: "File fetched successfully",
       url,
       publicId: media.publicId,
       type: media.resourceType,
+      extension: media.extension,
     });
   }),
 

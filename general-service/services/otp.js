@@ -27,7 +27,7 @@ const otpController = {
 
     // Send email by Notification Service
     try {
-      await fetch("http://localhost:8000/api/email/send", {
+      await fetch(`${process.env.API_BASE_URL}/api/email/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

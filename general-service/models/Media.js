@@ -16,6 +16,10 @@ const MediaSchema = new mongoose.Schema(
       enum: ["image", "video", "raw"],
       required: true,
     },
+    extension: {
+      type: String,
+      required: true,
+    },
   },
   { timestamps: true }
 );
