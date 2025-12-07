@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from route.reporting_service_route import route as report_router
+from route.reporting_service_route import router as report_router
 
 app = FastAPI(
     title="Reporting Service",
