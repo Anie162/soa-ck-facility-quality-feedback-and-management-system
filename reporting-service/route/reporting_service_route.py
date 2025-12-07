@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Header, Depends # <--- Import thêm Header, Depends
+from fastapi import APIRouter, HTTPException, Header, Depends
 from model.Report import Report, ReportBase, ReportCreate
 from database import reports_collection
 from datetime import datetime
@@ -27,10 +27,15 @@ def report_serializer(report) -> dict:
         "UserID": report["UserID"],
     }
 
+def get_user_id_from_header(x_user_id: str = Header(..., alias="user-id")):
+    return x_user_id
+
 # CREATE 
 @router.post("/reports", response_model=dict)
 def create_report(report_input: ReportCreate):
     report_data = report_input.dict()
+    user_id: str = Depends(get_user_id_from_header)
+    report_data["UserID"] = user_id
     report_data["ReportId"] = str(uuid.uuid4())
     report_data["Status"] = "WAITING"
     report_data["Created_at"] = datetime.utcnow()

@@ -25,8 +25,7 @@ class ReportCreate(BaseModel):
     Title: str
     Content: str
     MediaURL: str  # Bắt buộc
-    Address: str   # Bắt buộc
-    UserID: str    # Bắt buộc
+    Address: str   # Bắt buộc 
 
 # 4. Report: Dùng cho việc RESPONSE (GET)
 class Report(ReportCreate):
@@ -35,3 +34,4 @@ class Report(ReportCreate):
     Created_at: datetime
     Updated_at: Optional[datetime] = None
     Note: Optional[str] = None
+    UserID: str

@@ -4,7 +4,7 @@ from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure, OperationFailure
 from dotenv import load_dotenv
 
-# Load biến môi trường từ file .env (chỉ có tác dụng ở Local)
+# Load biến môi trường từ file .env
 load_dotenv()
 
 MONGO_URI = os.getenv("MONGO_URI")

@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional
 
-# 1. Base: Dùng cho update (nếu cần)
+# 1. Base: Dùng cho update
 class ComplaintBase(BaseModel):
     Content: Optional[str] = None
     Status: Optional[str] = None
