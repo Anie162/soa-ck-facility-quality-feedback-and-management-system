@@ -104,13 +104,6 @@ def update_report(
     report = reports_collection.find_one({"ReportId": report_id})
     return {"message": "Report updated", "data": report_serializer(report)}
 
-# GET ALL 
-@router.get("/reports", response_model=list)
-def get_all_reports():
-    reports = []
-    for report in reports_collection.find():
-        reports.append(report_serializer(report))
-    return reports
 
 @router.get("/reports", response_model=list)
 def get_reports(
