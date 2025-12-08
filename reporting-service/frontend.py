@@ -33,7 +33,7 @@ def sort_reports_priority(reports_data):
     if not reports_data: return []
     df = pd.DataFrame(reports_data)
     priority_order = ["WAITING", "IN_PROGRESS", "COMPLETED", "REJECTED"]
-    # Kiểm tra tính hợp lệ của status trước khi sort
+    # Kiểm tra data trước khi sort
     df['Status'] = pd.Categorical(df['Status'], categories=priority_order, ordered=True)
     df = df.sort_values(by=['Status', 'Created_at'], ascending=[True, False])
     return df.to_dict('records')
@@ -52,7 +52,7 @@ current_role = st.sidebar.selectbox("Vai trò", ["USER", "MANAGER", "TECHNICIAN"
 headers = {"user-id": current_user_id, "X-Role": current_role}
 
 # ==========================================
-# 1. GIAO DIỆN USER (DÂN CƯ)
+# 1. GIAO DIỆN USER (DÂN CƯ) - ĐÃ CẬP NHẬT HIỂN THỊ ĐỊA CHỈ
 # ==========================================
 def render_user_interface():
     st.title(f"👋 Xin chào cư dân {current_user_id}")
@@ -91,17 +91,37 @@ def render_user_interface():
     with tab2:
         res = requests.get(f"{API_URL}/api/report/reports", params={"reporter_id": current_user_id}, headers=headers)
         if res.status_code == 200:
-            for r in sort_reports_priority(res.json()):
-                with st.expander(f"[{r['Status']}] {r['Title']} - {r['Created_at'][:10]}"):
-                    st.write(f"**Nội dung:** {r.get('Content')}")
-                    if r.get('MediaURL'): st.image(r['MediaURL'], width=200)
-                    if r.get("Note"): st.info(f"Phản hồi: {r['Note']}")
-                    if r['Status'] == "COMPLETED":
-                        with st.form(key=f"form_{r['ReportId']}"):
-                            reason = st.text_input("Lý do khiếu nại")
-                            if st.form_submit_button("Gửi Khiếu Nại"):
-                                requests.post(f"{API_URL}/api/complaint/report/{r['ReportId']}", json={"Content": reason}, headers=headers)
-                                st.success("Đã gửi khiếu nại!"); st.rerun()
+            reports_data = res.json()
+            if not reports_data:
+                st.info("Bạn chưa có báo cáo nào.")
+            else:
+                for r in sort_reports_priority(reports_data):
+                    # Card hiển thị
+                    status_icon = "🟢" if r['Status'] == "COMPLETED" else "🔴" if r['Status'] == "REJECTED" else "🟡"
+                    with st.expander(f"{status_icon} [{r['Status']}] {r['Title']} - {r['Created_at'][:10]}"):
+                        c1, c2 = st.columns([1, 2])
+                        with c1:
+                            if r.get('MediaURL'): st.image(r['MediaURL'], width=200)
+                        
+                        with c2:
+                            # --- PHẦN MỚI THÊM: HIỂN THỊ ĐỊA CHỈ ---
+                            addr = r.get('Address', {})
+                            full_address = f"{addr.get('Detail', '')}, {addr.get('Street', '')}, {addr.get('Ward', '')}, {addr.get('District', '')}, {addr.get('City', '')}"
+                            st.write(f"**📍 Địa chỉ:** {full_address}")
+                            # ---------------------------------------
+                            
+                            st.write(f"**📝 Nội dung:** {r.get('Content')}")
+                            
+                            if r.get("Note"): st.info(f"👮 Phản hồi từ quản lý: {r['Note']}")
+                            
+                            # Nút khiếu nại
+                            if r['Status'] == "COMPLETED":
+                                st.write("---")
+                                with st.form(key=f"form_{r['ReportId']}"):
+                                    reason = st.text_input("Lý do khiếu nại (Nếu chưa hài lòng):")
+                                    if st.form_submit_button("Gửi Khiếu Nại"):
+                                        requests.post(f"{API_URL}/api/complaint/report/{r['ReportId']}", json={"Content": reason}, headers=headers)
+                                        st.success("Đã gửi khiếu nại!"); st.rerun()
 
 # ==========================================
 # 2. GIAO DIỆN MANAGER (QUẢN LÝ)
@@ -132,18 +152,16 @@ def render_manager_interface():
                         with cols[1]:
                             st.write(f"**Người báo:** {r['ReporterID']}")
                             st.write(f"**Địa chỉ:** {r['Address'].get('Detail')}, {r['Address'].get('City')}")
+                            st.write(f"**Nội dung:** {r.get('Content')}")
                             
-                            # --- PHẦN NÀY ĐÃ ĐƯỢC KHÔI PHỤC ---
                             st.write("---")
-                            st.write("#### 🛠️ Giao việc (Assign Task)")
+                            st.write("#### 🛠️ Giao việc (Giả lập)")
                             
                             tech_id_input = st.text_input("Nhập Mã Technician:", placeholder="VD: TECH01")
-                            
                             if st.button("🚀 Giao việc ngay"):
                                 if not tech_id_input:
                                     st.error("Vui lòng nhập Mã nhân viên kỹ thuật!")
                                 else:
-                                    # Giả lập: Gọi PATCH update status -> IN_PROGRESS và ghi Note
                                     assign_note = f"Đã giao việc cho kỹ thuật viên: {tech_id_input}"
                                     assign_res = requests.patch(
                                         f"{API_URL}/api/report/reports/{selected_id}/status",
@@ -151,14 +169,12 @@ def render_manager_interface():
                                         headers=headers
                                     )
                                     if assign_res.status_code == 200:
-                                        st.success(f"Đã giao việc cho {tech_id_input}! Trạng thái chuyển sang IN_PROGRESS.")
+                                        st.success(f"Đã giao việc cho {tech_id_input}! Trạng thái -> IN_PROGRESS.")
                                         st.rerun()
-                                    else:
-                                        st.error(f"Lỗi: {assign_res.text}")
-                            # -----------------------------------
+                                    else: st.error(f"Lỗi: {assign_res.text}")
 
                             st.write("---")
-                            st.write("#### 📝 Duyệt / Cập nhật khác")
+                            st.write("#### 📝 Duyệt / Cập nhật")
                             
                             status_opts = ["WAITING", "IN_PROGRESS", "COMPLETED", "REJECTED"]
                             current_status_idx = 0
@@ -185,9 +201,8 @@ def render_manager_interface():
 # ==========================================
 def render_technician_interface():
     st.title(f"👷 Kỹ Thuật Viên: {current_user_id}")
-    st.info("Danh sách công việc đang thực hiện (Mô phỏng)")
+    st.info("Danh sách công việc đang thực hiện (Mô phỏng lấy từ Task Service)")
     
-    # Giả lập: Technician thấy tất cả đơn IN_PROGRESS
     res = requests.get(f"{API_URL}/api/report/reports", params={"status": "IN_PROGRESS"}, headers=headers)
     
     if res.status_code == 200:
@@ -196,8 +211,6 @@ def render_technician_interface():
             st.warning("Hiện không có công việc nào đang tiến hành.")
         else:
             for task in reports:
-                # Chỉ hiện những task có Note chứa tên Tech (Giả lập filter)
-                # Hoặc hiện hết nếu muốn test dễ
                 with st.expander(f"⚙️ {task['Title']} ({task['ReportId']})"):
                     c1, c2 = st.columns([1, 2])
                     with c1:
