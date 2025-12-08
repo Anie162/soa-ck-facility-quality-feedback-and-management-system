@@ -41,6 +41,8 @@ class ReportBase(BaseModel):
     Address: Optional[AddressSchema] = None
     Note: Optional[str] = None
     Status: Optional[ReportStatus] = None
+    ManagerID: Optional[str] = None   
+    TechnicianID: Optional[str] = None  
 
 # ReportCreate: Dùng cho việc CREATE (POST)
 class ReportCreate(BaseModel):
@@ -58,3 +60,5 @@ class Report(ReportCreate):
     Updated_at: Optional[datetime] = None
     Note: Optional[str] = None
     UserID: str
+    ManagerID: Optional[str] = None 
+    TechnicianID: Optional[str] = None
