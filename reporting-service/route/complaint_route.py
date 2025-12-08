@@ -1,12 +1,18 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header, Depends
 from model.Complaint import Complaint, ComplaintCreate
+# Import reports_collection để check trạng thái báo cáo gốc
 from database import complaints_collection, reports_collection
 from datetime import datetime
 import uuid
 
 router = APIRouter()
 
-# Serializer
+# ! CALL USER SERVICE TO VERIFY USER (UserID)
+# Hàm lấy UserID từ Header
+def get_user_id_from_header(x_user_id: str = Header(..., alias="user-id")):
+    return x_user_id
+## ---- ##
+
 def complaint_serializer(complaint) -> dict:
     return {
         "id": str(complaint["_id"]),
@@ -18,52 +24,56 @@ def complaint_serializer(complaint) -> dict:
         "UserID": complaint["UserID"]
     }
 
-# TẠO KHIẾU NẠI
-@router.post("/complaints", response_model=dict)
-def create_complaint(complaint_input: ComplaintCreate):
-    # 1. Tìm cái Report gốc xem có tồn tại không
-    report = reports_collection.find_one({"ReportId": complaint_input.ReportId})
-    
+# TẠO KHIẾU NẠI DỰA TRÊN REPORT ID TRÊN URL
+# URL sẽ có dạng: /api/complaint/report/R-123456
+@router.post("/report/{report_id}", response_model=dict)
+def create_complaint(
+    report_id: str,   # Lấy ID từ URL
+    complaint_input: ComplaintCreate, # Lấy nội dung từ Body
+    user_id: str = Depends(get_user_id_from_header) # Lấy User từ Header
+):
+    # 1. Kiểm tra Report có tồn tại không
+    report = reports_collection.find_one({"ReportId": report_id})
     if not report:
         raise HTTPException(status_code=404, detail="Report ID not found")
 
-    # 2. CHECK LOGIC: Chỉ cho phép khiếu nại khi Report đã COMPLETED
-    # Nếu chưa xong mà khiếu nại thì vô lý
+    # 2. Chỉ cho khiếu nại khi báo cáo đã Xong 
     if report["Status"] != "COMPLETED":
         raise HTTPException(
             status_code=400, 
             detail="You can only file a complaint for COMPLETED reports."
         )
 
-    # 3. Chuẩn bị dữ liệu Khiếu nại
+    # 3. Chuẩn bị dữ liệu để lưu
     complaint_data = complaint_input.dict()
     complaint_data["ComplaintId"] = str(uuid.uuid4())
+    complaint_data["ReportId"] = report_id # Gán ID từ URL vào data
+    complaint_data["UserID"] = user_id     # Gán ID từ Header vào data
     complaint_data["Created_at"] = datetime.utcnow()
-    complaint_data["Status"] = "PENDING" # Mặc định là đang chờ xử lý
+    complaint_data["Status"] = "PENDING"
 
-    # 4. Lưu khiếu nại vào DB
+    # 4. Lưu Complaint
     complaints_collection.insert_one(complaint_data)
 
-    # Tự động chuyển trạng thái Report gốc từ COMPLETED -> IN_PROGRESS
-    # Để nhân viên thấy và đi sửa lại.
+    # 5. Tự động mở lại Report
+    # Chuyển trạng thái Report từ COMPLETED -> IN_PROGRESS
     reports_collection.update_one(
-        {"ReportId": complaint_input.ReportId},
+        {"ReportId": report_id},
         {
             "$set": {
-                "Status": "IN_PROGRESS", 
+                "Status": "IN_PROGRESS",
                 "Updated_at": datetime.utcnow(),
                 "Note": f"Re-opened due to complaint: {complaint_input.Content}"
             }
         }
     )
 
-    return {"message": "Complaint submitted. Report has been re-opened.", "data": complaint_data}
+    return {"message": "Complaint submitted successfully", "data": complaint_data}
 
-# LẤY DANH SÁCH KHIẾU NẠI CỦA 1 REPORT
-@router.get("/complaints/{report_id}", response_model=list)
+# Lấy danh sách khiếu nại của 1 report
+@router.get("/report/{report_id}", response_model=list)
 def get_complaints_by_report(report_id: str):
     complaints = []
-    # Tìm tất cả khiếu nại có ReportId trùng khớp
     for c in complaints_collection.find({"ReportId": report_id}):
         complaints.append(complaint_serializer(c))
     return complaints

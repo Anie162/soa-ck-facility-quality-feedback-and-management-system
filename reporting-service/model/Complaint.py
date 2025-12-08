@@ -7,14 +7,14 @@ class ComplaintBase(BaseModel):
     Content: Optional[str] = None
     Status: Optional[str] = None
 
-# 2. Create: Những gì người dùng cần nhập
+# 2. ComplaintCreate: Input của người dùng
 class ComplaintCreate(BaseModel):
-    ReportId: str  # Bắt buộc phải biết đang khiếu nại cho báo cáo nào
-    Content: str   # Lý do khiếu nại (VD: Sửa chưa dứt điểm)
-    UserID: str
+    Content: str  
 
-# 3. Full: Dùng để lưu DB và trả về
+# 3. Complaint
 class Complaint(ComplaintCreate):
     ComplaintId: str
+    ReportId: str   # Backend tự điền từ URL
+    UserID: str     # Backend tự điền từ Header
     Created_at: datetime
-    Status: str     # PENDING, RESOLVED...
+    Status: str     # Backend tự điền
