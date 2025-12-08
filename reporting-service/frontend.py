@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import pandas as pd
 from datetime import datetime
-import base64 # <--- MỚI THÊM
+import base64
 
 # --- CẤU HÌNH ---
 API_URL = "https://irc-service.onrender.com" 
@@ -28,10 +28,25 @@ def image_to_base64(uploaded_file):
     try:
         bytes_data = uploaded_file.getvalue()
         base64_str = base64.b64encode(bytes_data).decode()
-        # Tạo định dạng Data URI (VD: data:image/png;base64,...)
         return f"data:{uploaded_file.type};base64,{base64_str}"
     except Exception as e:
         return None
+
+# --- QUẢN LÝ TRẠNG THÁI FORM (RESET) ---
+if 'uploader_key' not in st.session_state:
+    st.session_state.uploader_key = 0
+
+def clear_form_data():
+    """Hàm này xóa dữ liệu trong các ô nhập sau khi gửi thành công"""
+    st.session_state["content_input"] = ""
+    st.session_state["media_url_input"] = ""
+    st.session_state["detail_input"] = ""
+    st.session_state["street_input"] = ""
+    st.session_state["ward_input"] = ""
+    st.session_state["district_input"] = ""
+    st.session_state["city_input"] = ""
+    # Tăng key để reset file uploader
+    st.session_state.uploader_key += 1
 
 st.set_page_config(page_title="Hệ thống Báo cáo Sự cố", layout="wide")
 
@@ -49,7 +64,7 @@ st.title("🚧 Cổng Thông tin Sự cố Hạ tầng Đô thị")
 
 tab1, tab2, tab3 = st.tabs(["📝 Gửi Báo Cáo Mới", "📋 Danh Sách & Xử Lý", "📢 Tra Cứu Khiếu Nại"])
 
-# === TAB 1: TẠO BÁO CÁO (ĐÃ SỬA UPLOAD ẢNH) ===
+# TAB 1: TẠO BÁO CÁO
 with tab1:
     st.header("Gửi báo cáo sự cố mới")
     col1, col2 = st.columns(2)
@@ -59,58 +74,70 @@ with tab1:
             options=list(INCIDENT_TYPES.keys()),
             format_func=lambda x: INCIDENT_TYPES[x]
         )
-        content = st.text_area("Mô tả chi tiết (*)", height=100)
+        # Thêm key để quản lý reset
+        content = st.text_area("Mô tả chi tiết (*)", height=100, key="content_input")
         
-        # --- THAY ĐỔI Ở ĐÂY: Dùng File Uploader ---
-        uploaded_file = st.file_uploader("Chọn ảnh/video minh họa (*)", type=['png', 'jpg', 'jpeg'])
+        # File uploader với key động để reset được
+        uploaded_file = st.file_uploader(
+            "Chọn ảnh/video minh họa (*)", 
+            type=['png', 'jpg', 'jpeg'], 
+            key=f"uploader_{st.session_state.uploader_key}"
+        )
+        
         media_url_to_send = ""
-        
         if uploaded_file is not None:
-            # Hiển thị ảnh xem trước (Preview)
             st.image(uploaded_file, caption="Ảnh đã chọn", width=200)
-            # Chuyển đổi sang chuỗi Base64 để gửi đi
             media_url_to_send = image_to_base64(uploaded_file)
         else:
-            # Cho phép nhập link nếu không muốn upload file (Optional)
-            media_url_to_send = st.text_input("Hoặc dán đường dẫn ảnh (URL) tại đây:")
-        # ------------------------------------------
+            # Input link dự phòng (cũng thêm key để reset)
+            media_url_to_send = st.text_input("Hoặc dán đường dẫn ảnh (URL) tại đây:", key="media_url_input")
     
     with col2:
         st.subheader("📍 Địa điểm sự cố")
-        detail = st.text_input("Số nhà, ngõ ngách")
-        street = st.text_input("Tên đường")
-        ward = st.text_input("Phường/Xã")
-        district = st.text_input("Quận/Huyện")
-        city = st.selectbox("Tỉnh/Thành phố", ["TP. Hồ Chí Minh", "Hà Nội", "Đà Nẵng", "Khác"])
+        # Thêm key cho tất cả input địa chỉ để reset
+        detail = st.text_input("Số nhà, ngõ ngách", key="detail_input")
+        street = st.text_input("Tên đường", key="street_input")
+        ward = st.text_input("Phường/Xã", key="ward_input")
+        district = st.text_input("Quận/Huyện", key="district_input")
+        
+        city = st.text_input("Tỉnh/Thành phố", key="city_input") 
 
     if st.button("Gửi Báo Cáo", type="primary"):
-        # Validate ảnh
         if not media_url_to_send:
             st.error("Vui lòng chọn ảnh hoặc nhập link ảnh!")
         else:
+            # --- TỰ ĐỘNG VIẾT HOA CHỮ CÁI ĐẦU (TITLE CASE) ---
+            # Dùng hàm .strip() để xóa khoảng trắng thừa và .title() để viết hoa
+            address_payload = {
+                "Detail": detail.strip().title(),
+                "Street": street.strip().title(),
+                "Ward": ward.strip().title(),
+                "District": district.strip().title(),
+                "City": city.strip().title()
+            }
+
             payload = {
                 "IncidentType": INCIDENT_TYPES[incident_key], 
                 "Content": content,
-                "MediaURL": media_url_to_send, # Gửi chuỗi Base64 siêu dài này đi
-                "Address": {
-                    "Detail": detail,
-                    "Street": street,
-                    "Ward": ward,
-                    "District": district,
-                    "City": city
-                }
+                "MediaURL": media_url_to_send,
+                "Address": address_payload
             }
+            
             try:
                 res = requests.post(f"{API_URL}/api/report/reports", json=payload, headers=headers)
                 if res.status_code == 200:
                     st.success(f"✅ Gửi thành công! Mã báo cáo: {res.json()['data']['ReportId']}")
                     st.json(res.json())
+                    
+                    # --- XÓA FORM SAU KHI GỬI THÀNH CÔNG ---
+                    clear_form_data()
+                    st.rerun() # Tải lại trang để áp dụng việc xóa form
                 else:
                     st.error(f"❌ Lỗi: {res.text}")
             except Exception as e:
                 st.error(f"Không kết nối được Server: {e}")
 
-# === TAB 2: DANH SÁCH & XỬ LÝ (GIỮ NGUYÊN) ===
+# DANH SÁCH & XỬ LÝ
 with tab2:
     st.header("Danh sách báo cáo")
     col_filter1, col_filter2 = st.columns(2)
@@ -132,29 +159,42 @@ with tab2:
                 st.info("Không có dữ liệu.")
             else:
                 df = pd.DataFrame(reports)
-                st.dataframe(df[["ReportId", "Title", "Status", "Created_at", "ReporterID"]], use_container_width=True)
+                # Đảm bảo hiển thị đúng cột
+                display_cols = ["ReportId", "Title", "Status", "Created_at", "ReporterID"]
+                # Lọc các cột tồn tại trong df để tránh lỗi KeyError nếu data cũ thiếu trường
+                valid_cols = [c for c in display_cols if c in df.columns]
+                st.dataframe(df[valid_cols], use_container_width=True)
+
                 st.divider()
                 st.subheader("🛠️ Chi tiết & Xử lý")
-                selected_report_id = st.selectbox("Chọn Mã Báo Cáo:", [r["ReportId"] for r in reports], key="select_report_main")
+                
+                # Tạo list ID
+                report_ids = [r["ReportId"] for r in reports]
+                selected_report_id = st.selectbox("Chọn Mã Báo Cáo:", report_ids, key="select_report_main")
+                
                 report_detail = next((r for r in reports if r["ReportId"] == selected_report_id), None)
 
                 if report_detail:
                     c1, c2 = st.columns(2)
                     with c1:
-                        st.markdown(f"### {report_detail['Title']}")
+                        st.markdown(f"### {report_detail.get('Title', 'Không có tiêu đề')}")
                         st.write(f"**Nội dung:** {report_detail.get('Content', '')}")
-                        status_color = "blue"
-                        if report_detail['Status'] == "COMPLETED": status_color = "green"
-                        elif report_detail['Status'] == "REJECTED": status_color = "red"
-                        st.markdown(f"**Trạng thái:** :{status_color}[{report_detail['Status']}]")
                         
-                        # Hiển thị ảnh (Streamlit tự hiểu chuỗi Base64)
+                        status = report_detail.get('Status', 'UNKNOWN')
+                        status_color = "blue"
+                        if status == "COMPLETED": status_color = "green"
+                        elif status == "REJECTED": status_color = "red"
+                        st.markdown(f"**Trạng thái:** :{status_color}[{status}]")
+                        
                         if report_detail.get('MediaURL'):
-                            st.image(report_detail['MediaURL'], caption="Ảnh hiện trường", width=400)
+                            # Kiểm tra xem MediaURL là base64 hay link thường
+                            media_url = report_detail['MediaURL']
+                            # Nếu là base64 thì hiển thị, nếu là link thì cũng hiển thị
+                            st.image(media_url, caption="Ảnh hiện trường", width=400)
                     
                     with c2:
                         st.write("**📍 Địa chỉ:**")
-                        st.json(report_detail['Address'])
+                        st.json(report_detail.get('Address', {}))
                         st.write("---")
                         st.write("**📝 Ghi chú từ quản lý (Note):**")
                         if report_detail.get("Note"): st.info(report_detail["Note"])
@@ -165,7 +205,14 @@ with tab2:
                         st.warning("👮 **Khu vực Quản lý (Manager Zone)**")
                         m_col1, m_col2 = st.columns(2)
                         with m_col1:
-                            new_status = st.selectbox("Cập nhật trạng thái:", ["WAITING", "IN_PROGRESS", "COMPLETED", "REJECTED"], index=["WAITING", "IN_PROGRESS", "COMPLETED", "REJECTED"].index(report_detail['Status']))
+                            current_status = report_detail.get('Status', 'WAITING')
+                            status_options = ["WAITING", "IN_PROGRESS", "COMPLETED", "REJECTED"]
+                            # Xử lý trường hợp status hiện tại không nằm trong list chuẩn (data lỗi)
+                            default_index = 0
+                            if current_status in status_options:
+                                default_index = status_options.index(current_status)
+                                
+                            new_status = st.selectbox("Cập nhật trạng thái:", status_options, index=default_index)
                         with m_col2:
                             manager_note = st.text_input("Ghi chú/Lý do:")
                         if st.button("💾 Lưu Trạng Thái & Ghi Chú"):
@@ -176,7 +223,7 @@ with tab2:
                                 st.rerun()
                             else: st.error(f"❌ Lỗi: {patch_res.text}")
 
-                    if current_role == "USER" and report_detail['Status'] == "COMPLETED":
+                    if current_role == "USER" and report_detail.get('Status') == "COMPLETED":
                         st.error("📢 **Bạn chưa hài lòng với kết quả?**")
                         with st.form("complaint_form"):
                             complaint_content = st.text_area("Nhập lý do khiếu nại:")
