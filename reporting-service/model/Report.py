@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional
 from enum import Enum
 
-# Model cho Địa chỉ
+# 1. Model cho Địa chỉ
 class AddressSchema(BaseModel):
     Detail: str = Field(..., description="Số nhà, ngõ, ngách")
     Street: str = Field(..., description="Tên đường")
@@ -11,14 +11,14 @@ class AddressSchema(BaseModel):
     District: str = Field(..., description="Quận/Huyện")
     City: str = Field(..., description="Tỉnh/Thành phố")
 
-# Enum trạng thái
+# 2. Enum trạng thái
 class ReportStatus(str, Enum):
     WAITING = "WAITING"
     IN_PROGRESS = "IN_PROGRESS"
     COMPLETED = "COMPLETED"
     REJECTED = "REJECTED"
 
-# IncidentType Enum
+# 3. Enum Loại sự cố
 class IncidentTypeEnum(str, Enum):
     ROAD_DAMAGE = "Hư hỏng đường bộ (Ổ gà, nứt)"
     DRAINAGE = "Ngập úng / Tắc cống thoát nước"
@@ -30,28 +30,26 @@ class IncidentTypeEnum(str, Enum):
     GARBAGE = "Rác thải ùn ứ / Môi trường"
     MANHOLE = "Mất hoặc hỏng nắp hố ga"
     PUBLIC_FACILITY = "Hư hỏng công trình công cộng khác"
-    OTHER = "Sự cố khác" 
-    
-# ReportBase: Dùng cho việc UPDATE (PUT)
+    OTHER = "Sự cố khác"
+
+# 4. ReportBase: Dùng cho việc UPDATE (PUT)
 class ReportBase(BaseModel):
-    # Cho phép Admin sửa lại loại sự cố nếu người dân chọn sai
     IncidentType: Optional[IncidentTypeEnum] = None 
     Content: Optional[str] = None
     MediaURL: Optional[str] = None
     Address: Optional[AddressSchema] = None
     Note: Optional[str] = None
     Status: Optional[ReportStatus] = None
-    ManagerID: Optional[str] = None   
-    TechnicianID: Optional[str] = None  
+    # ĐÃ XÓA ManagerID và TechnicianID
 
-# ReportCreate: Dùng cho việc CREATE (POST)
+# 5. ReportCreate: Dùng cho việc CREATE (POST)
 class ReportCreate(BaseModel):
     IncidentType: IncidentTypeEnum = Field(..., description="Chọn loại sự cố")
     Content: str
     MediaURL: str  # Bắt buộc
     Address: AddressSchema   # Bắt buộc 
 
-# Report: Dùng cho việc RESPONSE (GET)
+# 6. Report: Dùng cho việc RESPONSE (GET)
 class Report(ReportCreate):
     ReportId: str
     Title: str
@@ -59,6 +57,4 @@ class Report(ReportCreate):
     Created_at: datetime
     Updated_at: Optional[datetime] = None
     Note: Optional[str] = None
-    UserID: str
-    ManagerID: Optional[str] = None 
-    TechnicianID: Optional[str] = None
+    UserID: str # Người báo cáo (Reporter) - Vẫn giữ lại

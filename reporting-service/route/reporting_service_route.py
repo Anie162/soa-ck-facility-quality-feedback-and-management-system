@@ -7,17 +7,14 @@ import uuid
 
 router = APIRouter()
 
-# ! CALL USER SERVICE TO VERIFY USER (UserID)
-# Hàm lấy Role từ Header
+# --- AUTH HELPERS ---
 def get_user_role(x_role: str = Header("USER", alias="X-Role")):
     return x_role
 
-# Hàm lấy UserID từ Header
 def get_user_id_from_header(x_user_id: str = Header(..., alias="user-id")):
     return x_user_id
-## ---- ##
 
-# Serializer 
+# --- SERIALIZER ---
 def report_serializer(report) -> dict:
     return {
         "id": str(report["_id"]),
@@ -31,35 +28,24 @@ def report_serializer(report) -> dict:
         "Updated_at": report.get("Updated_at"),
         "Status": report["Status"],
         "Note": report.get("Note"),
-        "ReporterID": report["UserID"],               # Người báo cáo
-        "ManagerID": report.get("ManagerID"),         # Người điều phối
-        "TechnicianID": report.get("TechnicianID"),   # Người xử lý
+        "ReporterID": report["UserID"]
     }
 
-# CREATE REPORT
+# --- CREATE REPORT ---
 @router.post("/reports", response_model=dict)
 def create_report(
     report_input: ReportCreate,
     user_id: str = Depends(get_user_id_from_header) 
 ):
     report_data = report_input.dict()
-    
-    # 1. Tự động tạo Title (Giữ nguyên logic cũ)
     auto_title = f"Sự cố hạ tầng - {report_input.IncidentType.value}"
     report_data["Title"] = auto_title
     
-    # 2. LOGIC TẠO ID MỚI: RP + UserID + Số thứ tự (01, 02...)
-    # Đếm số báo cáo hiện có của User này
     current_count = reports_collection.count_documents({"UserID": user_id})
-    
-    # Tăng lên 1
     next_seq = current_count + 1
-    
-    # Format số thứ tự thành 2 chữ số (vd: 1 -> 01, 9 -> 09, 10 -> 10)
-    # f"{next_seq:02d}" là số nguyên, đệm số 0 cho đủ 2 ký tự
     report_id = f"RP{user_id}{next_seq:02d}"
     
-    report_data["ReportId"] = report_id  # Gán ID mới vào
+    report_data["ReportId"] = report_id
     report_data["UserID"] = user_id
     report_data["Status"] = "WAITING"
     report_data["Created_at"] = datetime.utcnow()
@@ -69,24 +55,31 @@ def create_report(
     new_report = reports_collection.find_one({"_id": result.inserted_id})
     return {"message": "Report created", "data": report_serializer(new_report)}
 
-# Cập nhật cả Title nếu đổi loại sự cố
+# --- UPDATE REPORT DETAILS (PUT) ---
+# Dùng để sửa nội dung (Title, Content, Address...) -> TECHNICIAN KHÔNG ĐƯỢC DÙNG
 @router.put("/reports/{report_id}", response_model=dict)
 def update_report(
     report_id: str, 
     updated_data: ReportBase,
     role: str = Depends(get_user_role)
 ):
+    # 1. CHẶN TECHNICIAN
+    if role == "TECHNICIAN":
+        raise HTTPException(
+            status_code=403, 
+            detail="Permission denied: Technicians cannot modify report details. Please contact Manager."
+        )
+
+    # 2. Xử lý dữ liệu
     update_data_dict = {k: v for k, v in updated_data.dict().items() if v is not None}
-    
     if not update_data_dict:
          raise HTTPException(status_code=400, detail="No data provided to update")
 
+    # 3. Chặn sửa Status ở endpoint này (trừ Manager)
     if "Status" in update_data_dict and role != "MANAGER":
-         raise HTTPException(status_code=403, detail="Permission denied: Only MANAGER can update status.")
+         raise HTTPException(status_code=403, detail="Permission denied: Only MANAGER can update status via this endpoint.")
 
-    # Nếu Admin đổi IncidentType, thì phải đổi luôn Title cho khớp
     if "IncidentType" in update_data_dict:
-        # Lấy giá trị Enum từ string gửi lên
         new_type_enum = updated_data.IncidentType 
         new_title = f"Sự cố hạ tầng - {new_type_enum.value}"
         update_data_dict["Title"] = new_title
@@ -104,105 +97,36 @@ def update_report(
     report = reports_collection.find_one({"ReportId": report_id})
     return {"message": "Report updated", "data": report_serializer(report)}
 
-
-@router.get("/reports", response_model=list)
-def get_reports(
-    # 1. Lọc theo 3 Vai Trò
-    reporter_id: Optional[str] = Query(None, description="Lọc theo ID người báo cáo (Reporter)"),
-    manager_id: Optional[str] = Query(None, description="Lọc theo ID người điều phối (Manager)"),
-    technician_id: Optional[str] = Query(None, description="Lọc theo ID người xử lý (Technician)"),
-
-    # 2. Lọc theo thuộc tính khác
-    status: Optional[ReportStatus] = Query(None, description="Lọc theo trạng thái"),
-    incident_type: Optional[IncidentTypeEnum] = Query(None, description="Lọc theo loại sự cố"),
-    
-    # 3. Lọc theo địa chỉ
-    city: Optional[str] = Query(None, description="Lọc theo Thành phố"),
-    district: Optional[str] = Query(None, description="Lọc theo Quận/Huyện"),
-    ward: Optional[str] = Query(None, description="Lọc theo Phường/Xã"),
-
-    # 4. Lọc theo thời gian
-    start_date: Optional[datetime] = Query(None, description="Từ ngày (YYYY-MM-DD)"),
-    end_date: Optional[datetime] = Query(None, description="Đến ngày (YYYY-MM-DD)")
-):
-    # Khởi tạo query
-    query = {}
-
-    # --- MAP QUERY PARAM VÀO DATABASE FIELD ---
-    if reporter_id:
-        query["UserID"] = reporter_id       # Tìm theo UserID
-        
-    if manager_id:
-        query["ManagerID"] = manager_id     # Tìm theo ManagerID
-        
-    if technician_id:
-        query["TechnicianID"] = technician_id # Tìm theo TechnicianID
-
-    # Các bộ lọc khác
-    if status:
-        query["Status"] = status
-    if incident_type:
-        query["IncidentType"] = incident_type
-
-    # Lọc địa chỉ (Nested Object)
-    if city:
-        query["Address.City"] = city
-    if district:
-        query["Address.District"] = district
-    if ward:
-        query["Address.Ward"] = ward
-
-    # Lọc thời gian
-    if start_date or end_date:
-        date_filter = {}
-        if start_date:
-            date_filter["$gte"] = start_date
-        if end_date:
-            date_filter["$lte"] = end_date
-        if date_filter:
-            query["Created_at"] = date_filter
-
-    # Thực hiện truy vấn
-    reports = []
-    # Sort: Mới nhất lên đầu
-    cursor = reports_collection.find(query).sort("Created_at", -1)
-    
-    for report in cursor:
-        reports.append(report_serializer(report))
-        
-    return reports
-
-# GET REPORTS BY REPORT ID 
-@router.get("/reports/{report_id}", response_model=dict)
-def get_report_by_id(report_id: str):
-    report = reports_collection.find_one({"ReportId": report_id})
-    if not report:
-        raise HTTPException(status_code=404, detail="Report not found")
-    return report_serializer(report)
-
-# UPDATE STATUS (MANAGER) - CÓ THỂ KÈM GHI CHÚ
+# --- UPDATE STATUS & NOTE (PATCH) ---
+# Dùng cho quy trình xử lý: Manager duyệt, Technician báo cáo xong
 @router.patch("/reports/{report_id}/status", response_model=dict)
 def update_report_status(
     report_id: str, 
-    status: ReportStatus, # Trạng thái mới (VD: REJECTED)
-    note: Optional[str] = Query(None, description="Ghi chú lý do (nếu từ chối/duyệt)"), # <--- THÊM THAM SỐ NÀY
+    status: ReportStatus, 
+    note: Optional[str] = Query(None, description="Ghi chú lý do"), 
     role: str = Depends(get_user_role)
 ):
-    # 1. Kiểm tra quyền Manager
-    if role != "MANAGER":
-        raise HTTPException(status_code=403, detail="Permission denied: Only MANAGER can update report status.")
+    # 1. Kiểm tra quyền: Chỉ MANAGER và TECHNICIAN mới được update tiến độ
+    if role not in ["MANAGER", "TECHNICIAN"]:
+        raise HTTPException(status_code=403, detail="Permission denied.")
 
-    # 2. Chuẩn bị dữ liệu update
+    # 2. Logic dành riêng cho MANAGER (Reject bắt buộc có Note)
+    if role == "MANAGER":
+        if status == ReportStatus.REJECTED and not note:
+            raise HTTPException(
+                status_code=400, 
+                detail="Manager must provide a reason (Note) when rejecting a report."
+            )
+
+    # 3. Thực hiện update
     update_fields = {
         "Status": status,
         "Updated_at": datetime.utcnow()
     }
     
-    # Nếu có ghi chú thì cập nhật thêm, không thì thôi
     if note:
         update_fields["Note"] = note
 
-    # 3. Thực hiện update
     result = reports_collection.update_one(
         {"ReportId": report_id},
         {"$set": update_fields}
@@ -214,33 +138,59 @@ def update_report_status(
     report = reports_collection.find_one({"ReportId": report_id})
     return {"message": "Status updated successfully", "data": report_serializer(report)}
 
-# UPDATE STATUS ONLY (MANAGER)
-@router.patch("/reports/{report_id}/status", response_model=dict)
-def update_report_status(
-    report_id: str, 
-    status: ReportStatus, 
-    role: str = Depends(get_user_role)
+# --- GET ALL & FILTER ---
+@router.get("/reports", response_model=list)
+def get_reports(
+    caller_id: str = Depends(get_user_id_from_header),
+    caller_role: str = Depends(get_user_role),
+    
+    reporter_id: Optional[str] = Query(None),
+    status: Optional[ReportStatus] = Query(None),
+    incident_type: Optional[IncidentTypeEnum] = Query(None),
+    city: Optional[str] = Query(None),
+    district: Optional[str] = Query(None),
+    ward: Optional[str] = Query(None),
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None)
 ):
-    if role != "MANAGER":
-        raise HTTPException(status_code=403, detail="Permission denied: Only MANAGER can update report status.")
+    query = {}
 
-    result = reports_collection.update_one(
-        {"ReportId": report_id},
-        {
-            "$set": {
-                "Status": status,
-                "Updated_at": datetime.utcnow()
-            }
-        }
-    )
+    # Logic phân quyền xem
+    if caller_role in ["MANAGER", "TECHNICIAN"]:
+        # Manager và Technician được xem tất cả
+        if reporter_id: query["UserID"] = reporter_id
+    else:
+        # User thường chỉ xem của mình
+        query["UserID"] = caller_id 
 
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Report not found")
+    # Các bộ lọc khác
+    if status: query["Status"] = status
+    if incident_type: query["IncidentType"] = incident_type
+    if city: query["Address.City"] = city
+    if district: query["Address.District"] = district
+    if ward: query["Address.Ward"] = ward
 
+    if start_date or end_date:
+        date_filter = {}
+        if start_date: date_filter["$gte"] = start_date
+        if end_date: date_filter["$lte"] = end_date
+        if date_filter: query["Created_at"] = date_filter
+
+    reports = []
+    cursor = reports_collection.find(query).sort("Created_at", -1)
+    for report in cursor:
+        reports.append(report_serializer(report))
+    return reports
+
+# --- GET DETAIL ---
+@router.get("/reports/{report_id}", response_model=dict)
+def get_report_by_id(report_id: str):
     report = reports_collection.find_one({"ReportId": report_id})
-    return {"message": "Status updated successfully", "data": report_serializer(report)}
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return report_serializer(report)
 
-# DELETE
+# --- DELETE ---
 @router.delete("/reports/{report_id}", response_model=dict)
 def delete_report(report_id: str):
     result = reports_collection.delete_one({"ReportId": report_id})
