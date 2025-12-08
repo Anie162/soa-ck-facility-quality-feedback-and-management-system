@@ -28,35 +28,35 @@ def complaint_serializer(complaint) -> dict:
 # URL sẽ có dạng: /api/complaint/report/R-123456
 @router.post("/report/{report_id}", response_model=dict)
 def create_complaint(
-    report_id: str,   # Lấy ID từ URL
-    complaint_input: ComplaintCreate, # Lấy nội dung từ Body
-    user_id: str = Depends(get_user_id_from_header) # Lấy User từ Header
+    report_id: str, 
+    complaint_input: ComplaintCreate,
+    user_id: str = Depends(get_user_id_from_header)
 ):
-    # 1. Kiểm tra Report có tồn tại không
+    # 1. Kiểm tra Report tồn tại
     report = reports_collection.find_one({"ReportId": report_id})
     if not report:
         raise HTTPException(status_code=404, detail="Report ID not found")
 
-    # 2. Chỉ cho khiếu nại khi báo cáo đã Xong 
     if report["Status"] != "COMPLETED":
         raise HTTPException(
             status_code=400, 
             detail="You can only file a complaint for COMPLETED reports."
         )
 
-    # 3. Chuẩn bị dữ liệu để lưu
     complaint_data = complaint_input.dict()
-    complaint_data["ComplaintId"] = str(uuid.uuid4())
-    complaint_data["ReportId"] = report_id # Gán ID từ URL vào data
-    complaint_data["UserID"] = user_id     # Gán ID từ Header vào data
+    
+    # 2. LOGIC TẠO ID MỚI: CP + ReportID
+    # Ví dụ ReportID là RPUS00101 -> ComplaintID là CPRPUS00101
+    complaint_data["ComplaintId"] = f"CP{report_id}"
+    
+    complaint_data["ReportId"] = report_id
+    complaint_data["UserID"] = user_id
     complaint_data["Created_at"] = datetime.utcnow()
     complaint_data["Status"] = "PENDING"
 
-    # 4. Lưu Complaint
+    # Lưu và cập nhật trạng thái Report gốc
     complaints_collection.insert_one(complaint_data)
 
-    # 5. Tự động mở lại Report
-    # Chuyển trạng thái Report từ COMPLETED -> IN_PROGRESS
     reports_collection.update_one(
         {"ReportId": report_id},
         {

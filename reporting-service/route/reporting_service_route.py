@@ -6,6 +6,7 @@ import uuid
 
 router = APIRouter()
 
+# ! CALL USER SERVICE TO VERIFY USER (UserID)
 # Hàm lấy Role từ Header
 def get_user_role(x_role: str = Header("USER", alias="X-Role")):
     return x_role
@@ -13,6 +14,7 @@ def get_user_role(x_role: str = Header("USER", alias="X-Role")):
 # Hàm lấy UserID từ Header
 def get_user_id_from_header(x_user_id: str = Header(..., alias="user-id")):
     return x_user_id
+## ---- ##
 
 # Serializer 
 def report_serializer(report) -> dict:
@@ -39,14 +41,23 @@ def create_report(
 ):
     report_data = report_input.dict()
     
-    # 1. TỰ ĐỘNG TẠO TITLE
-    # report_input.IncidentType.value sẽ lấy ra chuỗi tiếng Việt (VD: "Hư hỏng đường bộ...")
+    # 1. Tự động tạo Title (Giữ nguyên logic cũ)
     auto_title = f"Sự cố hạ tầng - {report_input.IncidentType.value}"
     report_data["Title"] = auto_title
     
-    # 2. Điền các thông tin khác
+    # 2. LOGIC TẠO ID MỚI: RP + UserID + Số thứ tự (01, 02...)
+    # Đếm số báo cáo hiện có của User này
+    current_count = reports_collection.count_documents({"UserID": user_id})
+    
+    # Tăng lên 1
+    next_seq = current_count + 1
+    
+    # Format số thứ tự thành 2 chữ số (vd: 1 -> 01, 9 -> 09, 10 -> 10)
+    # f"{next_seq:02d}" là số nguyên, đệm số 0 cho đủ 2 ký tự
+    report_id = f"RP{user_id}{next_seq:02d}"
+    
+    report_data["ReportId"] = report_id  # Gán ID mới vào
     report_data["UserID"] = user_id
-    report_data["ReportId"] = str(uuid.uuid4())
     report_data["Status"] = "WAITING"
     report_data["Created_at"] = datetime.utcnow()
     report_data["Updated_at"] = None
