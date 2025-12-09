@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 REPORT_SERVICE_URL = "https://irc-service.onrender.com"
 TASK_SERVICE_URL = "https://task-management-service-kt6i.onrender.com"
 GENERAL_SERVICE_URL = "https://general-service-u75j.onrender.com"
+NOTIFICATION_URL = GENERAL_SERVICE_URL 
 
 # Danh sách loại sự cố
 INCIDENT_TYPES = {
@@ -42,6 +43,7 @@ def image_to_base64(uploaded_file):
 def reset_form():
     if 'uploader_key' not in st.session_state: st.session_state.uploader_key = 0
     st.session_state.uploader_key += 1
+    # Reset các biến session state cho input
     st.session_state["content_input"] = ""
     st.session_state["other_incident_input"] = ""
     st.session_state["detail_input"] = ""
@@ -65,7 +67,9 @@ def api_request(method, url, **kwargs):
         st.error(f"Lỗi: {e}")
         return None
 
+# --- MEDIA SERVICE UPLOAD ---
 def upload_file_to_media_service(uploaded_file):
+    """Upload file lên Media Service và trả về URL"""
     if not uploaded_file: return None
     try:
         files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
@@ -79,13 +83,29 @@ def upload_file_to_media_service(uploaded_file):
         st.error(f"Lỗi upload: {e}")
         return None
 
+# --- EMAIL HELPERS ---
+def get_user_email_by_id(user_id, headers):
+    return "citizen@test.com" # Giả lập
+
+def send_notification_email(to_email, subject, message):
+    if not to_email: return False
+    print(f"[MOCK EMAIL] To: {to_email} | Subject: {subject}") 
+    return True
+
+# --- OTP HELPERS (MOCK) ---
+def send_otp(email, action="register"): return True
+def verify_otp(email, otp_code): return True
+
 # ==========================================
 # AUTHENTICATION FLOW
 # ==========================================
 if 'auth_mode' not in st.session_state: st.session_state.auth_mode = 'login'
+if 'otp_sent' not in st.session_state: st.session_state.otp_sent = False
+if 'temp_reg_data' not in st.session_state: st.session_state.temp_reg_data = {}
 
 def switch_auth_mode(mode):
     st.session_state.auth_mode = mode
+    st.session_state.otp_sent = False
     st.rerun()
 
 def render_auth_sidebar():
@@ -101,21 +121,10 @@ def render_auth_sidebar():
                     res = api_request("POST", f"{GENERAL_SERVICE_URL}/api/users/login", json={"email": email_input, "password": password})
                     if res and res.status_code == 200:
                         user_data = res.json()
-                        # Xử lý format trả về khác nhau của API
-                        if "user" in user_data: user_info = user_data["user"]
-                        else: user_info = user_data
-
-                        st.session_state.user_info = user_info
-                        
-                        # --- QUAN TRỌNG: LƯU CẢ 2 LOẠI ID ---
-                        # 1. UUID (dùng cho Report/Manager)
-                        st.session_state.user_uuid = user_info.get("UserID") or user_info.get("id")
-                        # 2. Mongo ID (dùng cho Task/Technician)
-                        st.session_state.user_mongo_id = user_info.get("_id")
-                        
+                        st.session_state.user_info = user_data if "role" in user_data else user_data.get("user", {})
                         st.success("Thành công!")
                         st.rerun()
-                    else: st.error("Đăng nhập thất bại! Kiểm tra email/mật khẩu.")
+                    else: st.error("Đăng nhập thất bại!")
         st.sidebar.markdown("---")
         c1, c2 = st.sidebar.columns(2)
         with c1: 
@@ -142,9 +151,14 @@ def render_auth_sidebar():
                         st.success("Đăng ký thành công! Vui lòng đăng nhập."); time.sleep(1); switch_auth_mode('login')
                     else: st.error(f"Lỗi: {res.text if res else ''}")
         if st.sidebar.button("🔙 Quay lại"): switch_auth_mode('login')
+
     elif mode == 'forgot':
         st.sidebar.title("🔑 Quên mật khẩu")
-        st.sidebar.info("Vui lòng liên hệ Admin để cấp lại mật khẩu.")
+        with st.sidebar.form("forgot_form"):
+            email_forgot = st.text_input("Email của bạn")
+            submitted = st.form_submit_button("Gửi yêu cầu")
+            if submitted:
+                st.sidebar.success(f"Đã gửi hướng dẫn (Giả lập)")
         if st.sidebar.button("🔙 Quay lại"): switch_auth_mode('login')
 
 def logout_handler():
@@ -199,7 +213,6 @@ def view_resident(headers):
                 else: st.error("Gửi thất bại.")
 
     with tab2:
-        # Cư dân dùng UUID để xem report của mình
         res = api_request("GET", f"{REPORT_SERVICE_URL}/api/report/reports", params={"reporter_id": headers["user-id"]}, headers=headers)
         if res and res.status_code == 200:
             reports = res.json()
@@ -226,10 +239,6 @@ def view_resident(headers):
 # ==========================================
 def view_manager(headers):
     st.title("👮 Trung Tâm Điều Hành")
-    
-    # Manager cần xem Task -> Task Service có thể cần Mongo ID hoặc không check kỹ, 
-    # nhưng Report Service chắc chắn cần UUID.
-    
     tasks_res = api_request("GET", f"{TASK_SERVICE_URL}/api/tasks", headers=headers)
     tasks = tasks_res.json() if tasks_res and tasks_res.status_code == 200 else []
     
@@ -256,17 +265,12 @@ def view_manager(headers):
                             api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "COMPLETED"}, headers=headers)
                             report_id = task.get('reportId')
                             api_request("PATCH", f"{REPORT_SERVICE_URL}/api/report/reports/{report_id}/status", params={"status": "COMPLETED", "note": "Đã nghiệm thu và hoàn tất."}, headers=headers)
+                            send_notification_email("citizen@test.com", "Sự cố hoàn tất", f"Sự cố {task.get('title')} đã xong.")
                             st.success("Hoàn tất quy trình!"); time.sleep(1.5); st.rerun()
 
     st.divider()
-    
-    # Lấy danh sách Reports (Dùng header UUID chuẩn)
     res = api_request("GET", f"{REPORT_SERVICE_URL}/api/report/reports", headers=headers)
-    
-    if not res: 
-        st.error("Không thể tải danh sách báo cáo.")
-        return
-
+    if not res: return
     reports = res.json()
     c1, c2, c3 = st.columns(3)
     c1.metric("Tổng đơn", len(reports))
@@ -275,15 +279,8 @@ def view_manager(headers):
 
     if reports:
         df = pd.DataFrame(reports)
-        # Sắp xếp mới nhất lên đầu
-        if "Created_at" in df.columns:
-            df = df.sort_values(by="Created_at", ascending=False)
-            
         st.dataframe(df[["Status", "ReportId", "Title", "Created_at"]], use_container_width=True, hide_index=True)
-        
-        # Chọn hồ sơ để xử lý
-        report_ids = df["ReportId"].tolist()
-        selected_id = st.selectbox("👉 Chọn Mã Hồ Sơ để xử lý:", report_ids)
+        selected_id = st.selectbox("👉 Chọn Mã Hồ Sơ để xử lý:", df["ReportId"].tolist())
         
         if selected_id:
             r = next((item for item in reports if item["ReportId"] == selected_id), None)
@@ -297,91 +294,70 @@ def view_manager(headers):
                         st.write(f"**Người báo:** `{r.get('ReporterID', 'N/A')}`")
                         st.write(f"**Mô tả:** {r.get('Content')}")
                         st.write("---")
-                        
-                        # Chỉ cho phép giao việc nếu Status chưa hoàn thành
-                        if r['Status'] not in ["COMPLETED", "REJECTED"]:
-                            st.write("#### 🛠️ Giao Việc")
-                            
-                            # Lấy danh sách Technician
-                            tech_res = api_request("GET", f"{GENERAL_SERVICE_URL}/api/users", headers=headers)
-                            tech_list = []
-                            if tech_res and tech_res.status_code == 200:
-                                all_users = tech_res.json()
-                                # Lọc lấy Technician
-                                tech_list = [u for u in all_users if str(u.get('Role', '')).lower() == 'technician']
-                            
-                            if tech_list:
-                                # Tạo dictionary hiển thị: Tên -> Mongo ID
-                                tech_opts = {f"{t.get('Name', 'Noname')} ({t.get('Email')})": t.get('_id') for t in tech_list}
-                                selected_label = st.selectbox("Chọn KTV:", list(tech_opts.keys()))
-                                sel_tech_id = tech_opts[selected_label]
-                            else:
-                                st.warning("Không tìm thấy Kỹ thuật viên nào!")
-                                sel_tech_id = st.text_input("Nhập mã KTV thủ công:")
+                        st.write("#### 🛠️ Giao Việc")
+                        tech_res = api_request("GET", f"{GENERAL_SERVICE_URL}/api/users/role/Technician", headers=headers)
+                        tech_list = tech_res.json() if (tech_res and tech_res.status_code == 200) else []
+                        sel_tech_email = "" 
+                        if tech_list:
+                            tech_opts = {}
+                            for t in tech_list:
+                                tid = str(t.get('_id') or t.get('UserID') or t.get('id'))
+                                tname = t.get('Name') or t.get('name') or t.get('username') or "Noname"
+                                temail = t.get('Email') or t.get('email') or "No Email"
+                                tech_opts[tid] = f"{tname} ({temail})"
+                            sel_tech_id = st.selectbox("Chọn KTV:", list(tech_opts.keys()), format_func=lambda x: tech_opts[x])
+                            selected_tech_obj = next((t for t in tech_list if str(t.get('_id') or t.get('UserID') or t.get('id')) == sel_tech_id), {})
+                            sel_tech_email = selected_tech_obj.get('Email') or selected_tech_obj.get('email')
+                        else:
+                            sel_tech_id = st.text_input("Mã KTV:", placeholder="TECH...")
 
-                            task_desc = st.text_input("Mô tả công việc:", value=f"Xử lý: {r['Title']}")
-                            deadline_date = st.date_input("Hạn chót:", datetime.now() + timedelta(days=3))
-                            
-                            if st.button("🚀 Giao Việc"):
-                                deadline_str = deadline_date.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-                                # Gửi Mongo ID của KTV xuống Task Service
-                                payload = {
-                                    "reportId": r["ReportId"], 
-                                    "technicianId": sel_tech_id, 
-                                    "managerId": headers["user-id"], 
-                                    "title": f"Xử lý: {r['Title']}", 
-                                    "description": task_desc, 
-                                    "deadline": deadline_str
-                                }
-                                t_res = api_request("POST", f"{TASK_SERVICE_URL}/api/tasks", json=payload, headers=headers)
-                                if t_res and t_res.status_code in [200, 201]:
-                                    api_request("PATCH", f"{REPORT_SERVICE_URL}/api/report/reports/{selected_id}/status", params={"status": "IN_PROGRESS", "note": f"Giao cho {sel_tech_id}"}, headers=headers)
-                                    st.success("Đã giao việc thành công!")
-                                    time.sleep(1.5); st.rerun()
-                                else: st.error("Lỗi tạo Task (Kiểm tra lại Task Service)")
+                        task_desc = st.text_input("Mô tả công việc:", value=f"Xử lý: {r['Title']}")
+                        deadline_date = st.date_input("Hạn chót:", datetime.now() + timedelta(days=3))
+                        
+                        if st.button("🚀 Giao Việc"):
+                            deadline_str = deadline_date.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+                            payload = {"reportId": r["ReportId"], "technicianId": sel_tech_id, "managerId": headers["user-id"], "title": f"Xử lý: {r['Title']}", "description": task_desc, "deadline": deadline_str}
+                            t_res = api_request("POST", f"{TASK_SERVICE_URL}/api/tasks", json=payload, headers=headers)
+                            if t_res and t_res.status_code in [200, 201]:
+                                api_request("PATCH", f"{REPORT_SERVICE_URL}/api/report/reports/{selected_id}/status", params={"status": "IN_PROGRESS", "note": f"Giao cho {sel_tech_id}"}, headers=headers)
+                                if sel_tech_email:
+                                    send_notification_email(sel_tech_email, "NHIỆM VỤ MỚI", f"Task: {task_desc}\nDeadline: {deadline_date}")
+                                    st.success(f"Đã giao việc & gửi mail cho {sel_tech_email}")
+                                else: st.success("Đã giao việc")
+                                time.sleep(1.5); st.rerun()
+                            else: st.error("Lỗi tạo Task")
 
                         with st.expander("Cập nhật trạng thái thủ công"):
                             new_st = st.selectbox("Trạng thái", ["WAITING", "IN_PROGRESS", "COMPLETED", "REJECTED"], key="manual_st")
                             new_note = st.text_input("Lý do:", key="manual_note")
-                            if st.button("Lưu thay đổi"):
+                            if st.button("Lưu"):
                                 if new_st == "REJECTED" and not new_note: st.error("Thiếu lý do!")
                                 else:
                                     api_request("PATCH", f"{REPORT_SERVICE_URL}/api/report/reports/{selected_id}/status", params={"status": new_st, "note": new_note}, headers=headers)
-                                    st.success("Đã cập nhật!")
+                                    if new_st in ["COMPLETED", "REJECTED"]:
+                                        citizen_email = get_user_email_by_id(r.get('ReporterID'), headers)
+                                        if citizen_email:
+                                            send_notification_email(citizen_email, f"Cập nhật phản ánh {r['Title']}", f"Trạng thái: {new_st}\nPhản hồi: {new_note}")
+                                            st.success(f"Đã cập nhật & gửi mail cho cư dân ({citizen_email})")
+                                        else: st.success("Đã cập nhật")
+                                    else: st.success("Đã cập nhật!")
                                     time.sleep(1.5); st.rerun()
 
 # ==========================================
-# GIAO DIỆN: TECHNICIAN (Sử dụng Mongo ID)
+# GIAO DIỆN: TECHNICIAN (FULL WORKFLOW)
 # ==========================================
 def view_technician(headers):
     st.title("👷 Cổng Kỹ Thuật Viên")
-    
-    # Lấy Mongo ID chuẩn từ session
-    tech_mongo_id = st.session_state.get("user_mongo_id")
-    
-    if not tech_mongo_id:
-        st.error("Lỗi: Không tìm thấy Mongo ID của Kỹ thuật viên. Vui lòng đăng nhập lại.")
-        return
-
-    st.caption(f"🔧 Tech ID: `{tech_mongo_id}`")
-
-    # Dùng Mongo ID để lọc task từ Task Service
-    params = {"technicianId": tech_mongo_id}
-    
-    res = api_request("GET", f"{TASK_SERVICE_URL}/api/tasks", params=params, headers=headers)
+    res = api_request("GET", f"{TASK_SERVICE_URL}/api/tasks", params={"technician_id": headers["user-id"]}, headers=headers)
     
     if res and res.status_code == 200:
         all_tasks = res.json()
-        
-        # Lọc client-side bằng tech_mongo_id để chắc chắn
-        my_tasks = [t for t in all_tasks if str(t.get('technicianId')) == str(tech_mongo_id)]
-        
-        if not my_tasks: 
-            st.info("🎉 Bạn không có nhiệm vụ nào.")
+        if not all_tasks: 
+            st.info("🎉 Không có nhiệm vụ nào.")
         else:
-            new_tasks = [t for t in my_tasks if t.get('status') in ["ASSIGNED", "PENDING"]]
-            active_tasks = [t for t in my_tasks if t.get('status') not in ["ASSIGNED", "PENDING", "COMPLETED"]]
-            done_tasks = [t for t in my_tasks if t.get('status') == "COMPLETED"]
+            new_tasks = [t for t in all_tasks if t.get('status') == "ASSIGNED"]
+            active_tasks = [t for t in all_tasks if t.get('status') not in ["ASSIGNED", "COMPLETED"]]
+            done_tasks = [t for t in all_tasks if t.get('status') == "COMPLETED"]
 
             tab1, tab2, tab3 = st.tabs([f"🆕 Mới ({len(new_tasks)})", f"🚧 Đang xử lý ({len(active_tasks)})", f"✅ Xong ({len(done_tasks)})"])
             
@@ -391,23 +367,22 @@ def view_technician(headers):
                 for task in new_tasks:
                     tid = task.get('id') or task.get('TaskId')
                     report_id = task.get("reportId") or task.get("ReportId")
-                    
-                    # Gọi Report Service lấy chi tiết (dùng Header chuẩn của User)
                     r_res = api_request("GET", f"{REPORT_SERVICE_URL}/api/report/reports/{report_id}", headers=headers)
                     r_data = r_res.json() if r_res and r_res.status_code == 200 else {}
                     
                     with st.container(border=True):
                         st.subheader(f"🆕 {r_data.get('Title', 'Unknown Task')}")
-                        st.info(f"Trạng thái: {task.get('status')}")
                         st.warning(f"Deadline: {task.get('deadline', 'Chưa có')}")
                         st.write(f"**Mô tả:** {task.get('description')}")
                         st.write(f"**Địa chỉ:** {r_data.get('Address',{}).get('Detail')}")
                         
+                        # --- XEM CHI TIẾT TASK ---
                         with st.expander("Xem chi tiết Báo cáo gốc"):
                             st.write(f"**Nội dung:** {r_data.get('Content')}")
                             if r_data.get('MediaURL'): st.image(r_data['MediaURL'], width=300)
 
                         if st.button("🚀 XÁC NHẬN NHẬN VIỆC", key=f"acc_{tid}"):
+                            # Chuyển trạng thái -> Chờ báo cáo vật tư
                             api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "WAITING_FOR_MATERIAL_REPORT"}, headers=headers)
                             st.success("Đã nhận! Chuyển sang Tab 'Đang xử lý'."); time.sleep(1); st.rerun()
 
@@ -423,52 +398,49 @@ def view_technician(headers):
                     r_data = r_res.json() if r_res and r_res.status_code == 200 else {}
                     
                     with st.expander(f"[{status}] {task.get('title')}", expanded=True):
-                        col_img, col_info = st.columns([1, 2])
-                        with col_img:
-                            st.markdown("**📸 Ảnh hiện trường:**")
-                            if r_data.get('MediaURL'): st.image(r_data['MediaURL'], use_column_width=True)
-                            else: st.info("Không có ảnh báo cáo.")
+                        st.write(f"**Địa chỉ:** {r_data.get('Address',{}).get('Detail')}")
+                        st.info(f"Yêu cầu: {task.get('description')}")
+                        
+                        # BƯỚC 1: BÁO CÁO VẬT TƯ
+                        if status == "WAITING_FOR_MATERIAL_REPORT":
+                            st.write("#### 📦 Bước 1: Báo cáo vật tư")
+                            uploaded_mat = st.file_uploader("Upload file Excel/Word:", key=f"mat_{tid}")
+                            if st.button("Gửi báo cáo vật tư", key=f"btn_mat_{tid}"):
+                                url = upload_file_to_media_service(uploaded_mat)
+                                if url:
+                                    new_desc = task.get('description') + f"\n[Vật tư]: {url}"
+                                    api_request("PUT", f"{TASK_SERVICE_URL}/api/tasks/{tid}", json={"description": new_desc}, headers=headers)
+                                    api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "WAITING_FOR_APPROVAL"}, headers=headers)
+                                    st.success("Đã gửi! Chờ duyệt."); st.rerun()
+                                else: st.error("Chưa chọn file hoặc lỗi upload!")
 
-                        with col_info:
-                            st.write(f"**📍 Địa chỉ:** {r_data.get('Address',{}).get('Detail')}")
-                            st.info(f"📋 **Yêu cầu:** {task.get('description')}")
-                            st.divider()
+                        # CHỜ DUYỆT
+                        elif status == "WAITING_FOR_APPROVAL":
+                            st.warning("⏳ Đang chờ Manager duyệt vật tư...")
 
-                            if status == "WAITING_FOR_MATERIAL_REPORT":
-                                st.write("#### 📦 Bước 1: Báo cáo vật tư")
-                                uploaded_mat = st.file_uploader("Upload file Excel/Word:", key=f"mat_{tid}")
-                                if st.button("Gửi báo cáo vật tư", key=f"btn_mat_{tid}"):
-                                    url = upload_file_to_media_service(uploaded_mat)
-                                    if url:
-                                        new_desc = task.get('description') + f"\n[Vật tư]: {url}"
-                                        api_request("PUT", f"{TASK_SERVICE_URL}/api/tasks/{tid}", json={"description": new_desc}, headers=headers)
-                                        api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "WAITING_FOR_APPROVAL"}, headers=headers)
-                                        st.success("Đã gửi! Chờ duyệt."); st.rerun()
-                                    else: st.error("Chưa chọn file hoặc lỗi upload!")
+                        # BƯỚC 2: BẮT ĐẦU SỬA
+                        elif status == "APPROVED_WAITING_FOR_FIX":
+                            st.success("✅ Vật tư đã duyệt!")
+                            if st.button("🛠️ Bắt đầu sửa chữa", key=f"fix_{tid}"):
+                                api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "IN_PROGRESS"}, headers=headers)
+                                st.rerun()
 
-                            elif status == "WAITING_FOR_APPROVAL":
-                                st.warning("⏳ Đang chờ Manager duyệt vật tư...")
+                        # BƯỚC 3: BÁO CÁO KẾT QUẢ
+                        elif status == "IN_PROGRESS":
+                            st.write("#### 📸 Bước 3: Báo cáo kết quả")
+                            uploaded_res = st.file_uploader("Ảnh/Video kết quả:", key=f"res_{tid}")
+                            if st.button("✅ Xác nhận xử lý xong", key=f"btn_res_{tid}"):
+                                url = upload_file_to_media_service(uploaded_res)
+                                if url:
+                                    new_desc = task.get('description') + f"\n[Kết quả]: {url}"
+                                    api_request("PUT", f"{TASK_SERVICE_URL}/api/tasks/{tid}", json={"description": new_desc}, headers=headers)
+                                    api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "WAITING_FOR_RESULT_APPROVAL"}, headers=headers)
+                                    st.success("Đã báo cáo! Chờ nghiệm thu."); st.rerun()
+                                else: st.error("Thiếu ảnh minh chứng!")
 
-                            elif status == "APPROVED_WAITING_FOR_FIX":
-                                st.success("✅ Vật tư đã duyệt!")
-                                if st.button("🛠️ Bắt đầu sửa chữa", key=f"fix_{tid}"):
-                                    api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "IN_PROGRESS"}, headers=headers)
-                                    st.rerun()
-
-                            elif status == "IN_PROGRESS":
-                                st.write("#### 📸 Bước 3: Báo cáo kết quả")
-                                uploaded_res = st.file_uploader("Ảnh/Video kết quả:", key=f"res_{tid}")
-                                if st.button("✅ Xác nhận xử lý xong", key=f"btn_res_{tid}"):
-                                    url = upload_file_to_media_service(uploaded_res)
-                                    if url:
-                                        new_desc = task.get('description') + f"\n[Kết quả]: {url}"
-                                        api_request("PUT", f"{TASK_SERVICE_URL}/api/tasks/{tid}", json={"description": new_desc}, headers=headers)
-                                        api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "WAITING_FOR_RESULT_APPROVAL"}, headers=headers)
-                                        st.success("Đã báo cáo! Chờ nghiệm thu."); st.rerun()
-                                    else: st.error("Thiếu ảnh minh chứng!")
-
-                            elif status == "WAITING_FOR_RESULT_APPROVAL":
-                                st.warning("⏳ Đang chờ Manager nghiệm thu kết quả...")
+                        # CHỜ NGHIỆM THU
+                        elif status == "WAITING_FOR_RESULT_APPROVAL":
+                            st.warning("⏳ Đang chờ Manager nghiệm thu kết quả...")
 
             with tab3:
                 st.dataframe(pd.DataFrame(done_tasks))
@@ -482,25 +454,15 @@ if "user_info" not in st.session_state: st.session_state.user_info = None
 if not st.session_state.user_info:
     render_auth_sidebar()
     st.info("👈 Vui lòng đăng nhập hoặc đăng ký.")
+    st.image("https://images.unsplash.com/photo-1449824913929-4b4794984059", caption="Smart City")
 else:
     logout_handler()
     user = st.session_state.user_info
-    
-    # 1. Lấy Role
-    raw_role = user.get("Role") or user.get("role") or "Citizen"
+    raw_role = user.get("Role") or user.get("role", "")
     role_check = str(raw_role).lower().strip()
+    uid = str(user.get("_id") or user.get("id"))
+    req_headers = {"user-id": uid, "X-Role": raw_role}
     
-    # 2. CHUẨN HÓA ID CHO HEADER (Ưu tiên UUID để Manager/Resident hoạt động)
-    # Lấy UUID từ session đã lưu khi login, nếu không có thì fallback các trường khác
-    user_uuid = st.session_state.get("user_uuid") or user.get("UserID") or user.get("id")
-    
-    # Header chuẩn gửi đi (luôn dùng UUID để Report Service không lỗi 422)
-    req_headers = {"user-id": str(user_uuid), "X-Role": raw_role}
-    
-    # 3. ĐIỀU HƯỚNG
-    if role_check == "manager": 
-        view_manager(req_headers)
-    elif role_check == "technician": 
-        view_technician(req_headers) # Bên trong hàm này sẽ tự lấy Mongo ID để gọi Task Service
-    else: 
-        view_resident(req_headers)
+    if role_check == "manager": view_manager(req_headers)
+    elif role_check == "technician": view_technician(req_headers)
+    else: view_resident(req_headers)
