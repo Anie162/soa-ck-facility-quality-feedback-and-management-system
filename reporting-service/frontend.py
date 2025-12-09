@@ -123,7 +123,7 @@ def render_auth_sidebar():
                         "password": new_pass,
                         "email": email,
                         "full_name": full_name,
-                        "role": "USER" # <--- MẶC ĐỊNH ROLE LÀ USER (CITIZEN)
+                        "role": "Citizen" # <--- MẶC ĐỊNH ROLE LÀ USER (CITIZEN)
                     }
                     # Gọi API Register (Giả định endpoint là /api/auth/register hoặc /api/users)
                     res = api_request("POST", f"{GENERAL_SERVICE_URL}/api/users", json=payload)
@@ -163,7 +163,7 @@ def logout_handler():
     st.sidebar.success(f"👤 **{user.get('username', user.get('id'))}**")
     
     # Hiển thị Role tiếng Việt cho đẹp
-    role_map = {"USER": "Cư dân", "MANAGER": "Quản lý", "TECHNICIAN": "Kỹ thuật viên"}
+    role_map = {"Citizen": "Cư dân", "Manager": "Quản lý", "Technician": "Kỹ thuật viên"}
     display_role = role_map.get(user.get('role'), user.get('role'))
     st.sidebar.info(f"Vai trò: `{display_role}`")
     
@@ -270,7 +270,7 @@ def view_manager(headers):
                         
                         st.write("#### 🛠️ Điều Phối & Xử Lý")
                         # Lấy danh sách thợ
-                        tech_res = api_request("GET", f"{GENERAL_SERVICE_URL}/api/users", params={"role": "TECHNICIAN"})
+                        tech_res = api_request("GET", f"{GENERAL_SERVICE_URL}/api/users", params={"role": "Techinician"}, headers=headers)
                         tech_list = tech_res.json() if (tech_res and tech_res.status_code == 200) else []
                         
                         if tech_list:
@@ -348,13 +348,13 @@ if "user_info" not in st.session_state: st.session_state.user_info = None
 if not st.session_state.user_info:
     render_auth_sidebar()
     st.info("👈 Vui lòng đăng nhập hoặc đăng ký tài khoản từ thanh bên trái.")
-    st.image("https://images.unsplash.com/photo-1480714378408-67cf0d13bc1b?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80", caption="Smart City Management")
+    st.image("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQoE3Cza7rUEc5t7CTzWeQgHoBUkuhfr8RyPA&s", caption="Smart City Management")
 else:
     logout_handler()
     user = st.session_state.user_info
     role = user.get("role")
     req_headers = {"user-id": str(user.get("id")), "X-Role": role}
     
-    if role == "MANAGER": view_manager(req_headers)
-    elif role == "TECHNICIAN": view_technician(req_headers)
+    if role == "Manager": view_manager(req_headers)
+    elif role == "Technician": view_technician(req_headers)
     else: view_resident(req_headers)
