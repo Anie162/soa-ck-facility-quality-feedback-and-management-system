@@ -3,16 +3,47 @@ from model.Report import Report, ReportBase, ReportCreate, ReportStatus, Inciden
 from database import reports_collection
 from datetime import datetime
 from typing import Optional
-import uuid
+import httpx
 
 router = APIRouter()
 
-# --- AUTH HELPERS ---
-def get_user_role(x_role: str = Header("USER", alias="X-Role")):
-    return x_role
+GENERAL_SERVICE_URL = "https://general-service-u75j.onrender.com/api/users"
 
-def get_user_id_from_header(x_user_id: str = Header(..., alias="user-id")):
-    return x_user_id
+# --- AUTH HELPERS ---
+async def verify_user_from_general_service(user_id: str = Header(..., alias="user-id")):
+    """
+    Hàm này sẽ:
+    1. Lấy user-id từ Header gửi lên.
+    2. Gọi sang General Service để tìm user đó.
+    3. Nếu thấy -> Trả về dict chứa UserID và Role chuẩn từ DB.
+    4. Nếu không thấy hoặc lỗi mạng -> Báo lỗi 401/500.
+    """
+    try:
+        async with httpx.AsyncClient() as client:
+            # Gọi API GET danh sách user
+            response = await client.get(GENERAL_SERVICE_URL)
+            
+            if response.status_code != 200:
+                raise HTTPException(status_code=500, detail="Failed to connect to User Service")
+            
+            users_list = response.json()
+            
+            # Tìm user có UserID khớp với header gửi lên
+            # (Do endpoint trả về list nên phải dùng vòng lặp để tìm)
+            target_user = next((u for u in users_list if u.get("UserID") == user_id), None)
+            
+            if not target_user:
+                raise HTTPException(status_code=401, detail="User ID not found in General Service")
+            
+            # Trả về thông tin user đã xác thực
+            return {
+                "UserID": target_user["UserID"],
+                "Role": target_user["Role"], # Lấy Role thật từ DB, an toàn hơn tin vào Header X-Role
+                "Email": target_user.get("Email")
+            }
+
+    except httpx.RequestError:
+        raise HTTPException(status_code=503, detail="General Service unavailable")
 
 # --- SERIALIZER ---
 def report_serializer(report) -> dict:
@@ -33,14 +64,18 @@ def report_serializer(report) -> dict:
 
 # --- CREATE REPORT ---
 @router.post("/reports", response_model=dict)
-def create_report(
+async def create_report( # <--- Chuyển thành async vì verify_user là async
     report_input: ReportCreate,
-    user_id: str = Depends(get_user_id_from_header) 
+    user_info: dict = Depends(verify_user_from_general_service) # <--- Dùng hàm mới
 ):
+    user_id = user_info["UserID"] # Lấy ID đã verify
+    # user_role = user_info["Role"] # Bạn có thể lấy Role chuẩn ở đây nếu cần logic khác
+    
     report_data = report_input.dict()
     auto_title = f"Sự cố hạ tầng - {report_input.IncidentType.value}"
     report_data["Title"] = auto_title
     
+    # ... (Giữ nguyên logic tạo ID cũ)
     current_count = reports_collection.count_documents({"UserID": user_id})
     next_seq = current_count + 1
     report_id = f"RP{user_id}{next_seq:02d}"
