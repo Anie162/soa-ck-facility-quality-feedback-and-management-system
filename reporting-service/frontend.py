@@ -311,7 +311,7 @@ def view_manager(headers):
                         if u_res and u_res.status_code == 200:
                             all_users = u_res.json()
                             # Tìm user có ID trùng với ReporterID
-                            user_obj = next((u for u in all_users if u.get("UserID") == r.get('ReportId') or u.get("_id") == r.get('ReportId')), None)
+                            user_obj = next((u for u in all_users if u.get("UserID") == r.get('ReporterId') or u.get("_id") == r.get('ReporterId')), None)
                             if user_obj:
                                 reporter_name = user_obj.get("Name") or user_obj.get("name") or "No Name"
                                 st.write(f"**Người báo:** `{reporter_name}`")
