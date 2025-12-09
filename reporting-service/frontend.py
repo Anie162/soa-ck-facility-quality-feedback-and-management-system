@@ -117,7 +117,7 @@ def render_auth_sidebar():
                     res = api_request("POST", f"{GENERAL_SERVICE_URL}/api/users/login", json={"email": email_input, "password": password})
                     if res and res.status_code == 200:
                         user_data = res.json()
-                        st.session_state.user_info = user_data if "role" in user_data else user_data.get("user", {})
+                        st.session_state.user_info = user_data if "Role" in user_data else user_data.get("user", {})
                         st.success("Thành công!")
                         st.rerun()
                     else:
@@ -179,7 +179,7 @@ def logout_handler():
     display_name = user.get('name') or user.get('Name') or user.get('email') or user.get('Email')
     st.sidebar.success(f"👤 **{display_name}**")
     
-    raw_role = user.get('Role') or user.get('role', 'Unknown')
+    raw_role = user.get('Role') or user.get('Role', 'Unknown')
     role_map = {"Citizen": "Cư dân", "Manager": "Quản lý", "Technician": "Kỹ thuật viên"}
     st.sidebar.info(f"Vai trò: `{role_map.get(raw_role, raw_role)}`")
     
@@ -385,7 +385,7 @@ if not st.session_state.user_info:
 else:
     logout_handler()
     user = st.session_state.user_info
-    raw_role = user.get("Role") or user.get("role", "")
+    raw_role = user.get("Role") or user.get("Role", "")
     role_check = str(raw_role).lower()
     uid = str(user.get("_id") or user.get("id"))
     req_headers = {"user-id": uid, "X-Role": raw_role}
