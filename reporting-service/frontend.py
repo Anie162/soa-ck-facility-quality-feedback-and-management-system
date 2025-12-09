@@ -348,6 +348,7 @@ def view_manager(headers):
 # ==========================================
 def view_technician(headers):
     st.title("👷 Cổng Kỹ Thuật Viên")
+    # Lấy danh sách task của đúng technician đang đăng nhập
     res = api_request("GET", f"{TASK_SERVICE_URL}/api/tasks", params={"technician_id": headers["user-id"]}, headers=headers)
     
     if res and res.status_code == 200:
@@ -355,7 +356,9 @@ def view_technician(headers):
         if not all_tasks: 
             st.info("🎉 Không có nhiệm vụ nào.")
         else:
+            # Phân loại task
             new_tasks = [t for t in all_tasks if t.get('status') == "ASSIGNED"]
+            # Active tasks: Task đã nhận (không còn là ASSIGNED) và chưa xong (COMPLETED)
             active_tasks = [t for t in all_tasks if t.get('status') not in ["ASSIGNED", "COMPLETED"]]
             done_tasks = [t for t in all_tasks if t.get('status') == "COMPLETED"]
 
@@ -376,7 +379,7 @@ def view_technician(headers):
                         st.write(f"**Mô tả:** {task.get('description')}")
                         st.write(f"**Địa chỉ:** {r_data.get('Address',{}).get('Detail')}")
                         
-                        # --- XEM CHI TIẾT TASK ---
+                        # Xem chi tiết ảnh
                         with st.expander("Xem chi tiết Báo cáo gốc"):
                             st.write(f"**Nội dung:** {r_data.get('Content')}")
                             if r_data.get('MediaURL'): st.image(r_data['MediaURL'], width=300)
@@ -386,7 +389,7 @@ def view_technician(headers):
                             api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "WAITING_FOR_MATERIAL_REPORT"}, headers=headers)
                             st.success("Đã nhận! Chuyển sang Tab 'Đang xử lý'."); time.sleep(1); st.rerun()
 
-            # --- TAB 2: ĐANG XỬ LÝ ---
+            # --- TAB 2: ĐANG XỬ LÝ (Đã sửa đổi) ---
             with tab2:
                 if not active_tasks: st.write("Chưa có nhiệm vụ đang làm.")
                 for task in active_tasks:
@@ -394,53 +397,69 @@ def view_technician(headers):
                     status = task.get('status')
                     report_id = task.get("reportId")
                     
+                    # Lấy thông tin Report gốc để hiển thị ảnh
                     r_res = api_request("GET", f"{REPORT_SERVICE_URL}/api/report/reports/{report_id}", headers=headers)
                     r_data = r_res.json() if r_res and r_res.status_code == 200 else {}
                     
                     with st.expander(f"[{status}] {task.get('title')}", expanded=True):
-                        st.write(f"**Địa chỉ:** {r_data.get('Address',{}).get('Detail')}")
-                        st.info(f"Yêu cầu: {task.get('description')}")
+                        # Chia cột: Ảnh bên trái, Thông tin xử lý bên phải
+                        col_img, col_info = st.columns([1, 2])
                         
-                        # BƯỚC 1: BÁO CÁO VẬT TƯ
-                        if status == "WAITING_FOR_MATERIAL_REPORT":
-                            st.write("#### 📦 Bước 1: Báo cáo vật tư")
-                            uploaded_mat = st.file_uploader("Upload file Excel/Word:", key=f"mat_{tid}")
-                            if st.button("Gửi báo cáo vật tư", key=f"btn_mat_{tid}"):
-                                url = upload_file_to_media_service(uploaded_mat)
-                                if url:
-                                    new_desc = task.get('description') + f"\n[Vật tư]: {url}"
-                                    api_request("PUT", f"{TASK_SERVICE_URL}/api/tasks/{tid}", json={"description": new_desc}, headers=headers)
-                                    api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "WAITING_FOR_APPROVAL"}, headers=headers)
-                                    st.success("Đã gửi! Chờ duyệt."); st.rerun()
-                                else: st.error("Chưa chọn file hoặc lỗi upload!")
+                        with col_img:
+                            st.markdown("**📸 Ảnh hiện trường (Report):**")
+                            if r_data.get('MediaURL'):
+                                st.image(r_data['MediaURL'], use_column_width=True)
+                            else:
+                                st.info("Không có ảnh báo cáo.")
 
-                        # CHỜ DUYỆT
-                        elif status == "WAITING_FOR_APPROVAL":
-                            st.warning("⏳ Đang chờ Manager duyệt vật tư...")
+                        with col_info:
+                            st.write(f"**📍 Địa chỉ:** {r_data.get('Address',{}).get('Detail')}, {r_data.get('Address',{}).get('Street')}")
+                            st.write(f"**📝 Mô tả gốc:** {r_data.get('Content')}")
+                            st.info(f"📋 **Yêu cầu Task:** {task.get('description')}")
+                            st.divider()
 
-                        # BƯỚC 2: BẮT ĐẦU SỬA
-                        elif status == "APPROVED_WAITING_FOR_FIX":
-                            st.success("✅ Vật tư đã duyệt!")
-                            if st.button("🛠️ Bắt đầu sửa chữa", key=f"fix_{tid}"):
-                                api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "IN_PROGRESS"}, headers=headers)
-                                st.rerun()
+                            # --- QUY TRÌNH XỬ LÝ ---
+                            
+                            # BƯỚC 1: BÁO CÁO VẬT TƯ
+                            if status == "WAITING_FOR_MATERIAL_REPORT":
+                                st.write("#### 📦 Bước 1: Báo cáo vật tư")
+                                uploaded_mat = st.file_uploader("Upload file Excel/Word:", key=f"mat_{tid}")
+                                if st.button("Gửi báo cáo vật tư", key=f"btn_mat_{tid}"):
+                                    url = upload_file_to_media_service(uploaded_mat)
+                                    if url:
+                                        new_desc = task.get('description') + f"\n[Vật tư]: {url}"
+                                        api_request("PUT", f"{TASK_SERVICE_URL}/api/tasks/{tid}", json={"description": new_desc}, headers=headers)
+                                        api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "WAITING_FOR_APPROVAL"}, headers=headers)
+                                        st.success("Đã gửi! Chờ duyệt."); st.rerun()
+                                    else: st.error("Chưa chọn file hoặc lỗi upload!")
 
-                        # BƯỚC 3: BÁO CÁO KẾT QUẢ
-                        elif status == "IN_PROGRESS":
-                            st.write("#### 📸 Bước 3: Báo cáo kết quả")
-                            uploaded_res = st.file_uploader("Ảnh/Video kết quả:", key=f"res_{tid}")
-                            if st.button("✅ Xác nhận xử lý xong", key=f"btn_res_{tid}"):
-                                url = upload_file_to_media_service(uploaded_res)
-                                if url:
-                                    new_desc = task.get('description') + f"\n[Kết quả]: {url}"
-                                    api_request("PUT", f"{TASK_SERVICE_URL}/api/tasks/{tid}", json={"description": new_desc}, headers=headers)
-                                    api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "WAITING_FOR_RESULT_APPROVAL"}, headers=headers)
-                                    st.success("Đã báo cáo! Chờ nghiệm thu."); st.rerun()
-                                else: st.error("Thiếu ảnh minh chứng!")
+                            # CHỜ DUYỆT
+                            elif status == "WAITING_FOR_APPROVAL":
+                                st.warning("⏳ Đang chờ Manager duyệt vật tư...")
 
-                        # CHỜ NGHIỆM THU
-                        elif status == "WAITING_FOR_RESULT_APPROVAL":
-                            st.warning("⏳ Đang chờ Manager nghiệm thu kết quả...")
+                            # BƯỚC 2: BẮT ĐẦU SỬA
+                            elif status == "APPROVED_WAITING_FOR_FIX":
+                                st.success("✅ Vật tư đã duyệt!")
+                                if st.button("🛠️ Bắt đầu sửa chữa", key=f"fix_{tid}"):
+                                    api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "IN_PROGRESS"}, headers=headers)
+                                    st.rerun()
+
+                            # BƯỚC 3: BÁO CÁO KẾT QUẢ
+                            elif status == "IN_PROGRESS":
+                                st.write("#### 📸 Bước 3: Báo cáo kết quả")
+                                uploaded_res = st.file_uploader("Ảnh/Video kết quả:", key=f"res_{tid}")
+                                if st.button("✅ Xác nhận xử lý xong", key=f"btn_res_{tid}"):
+                                    url = upload_file_to_media_service(uploaded_res)
+                                    if url:
+                                        new_desc = task.get('description') + f"\n[Kết quả]: {url}"
+                                        api_request("PUT", f"{TASK_SERVICE_URL}/api/tasks/{tid}", json={"description": new_desc}, headers=headers)
+                                        api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "WAITING_FOR_RESULT_APPROVAL"}, headers=headers)
+                                        st.success("Đã báo cáo! Chờ nghiệm thu."); st.rerun()
+                                    else: st.error("Thiếu ảnh minh chứng!")
+
+                            # CHỜ NGHIỆM THU
+                            elif status == "WAITING_FOR_RESULT_APPROVAL":
+                                st.warning("⏳ Đang chờ Manager nghiệm thu kết quả...")
 
             with tab3:
                 st.dataframe(pd.DataFrame(done_tasks))
