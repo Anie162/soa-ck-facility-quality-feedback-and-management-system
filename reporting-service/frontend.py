@@ -307,7 +307,7 @@ def view_manager(headers):
                     with c1: 
                         if r.get('MediaURL'): st.image(r['MediaURL'], caption="Hiện trường")
                     with c2:
-                        st.write(f"**Người báo:** `{r.get('ReporterID', 'N/A')}`")
+                        st.write(f"**Người báo:** `{r.get('Name', 'N/A')}`")
                         st.write(f"**Mô tả:** {r.get('Content')}")
                         st.write("---")
                         st.write("#### 🛠️ Giao Việc")
@@ -413,7 +413,7 @@ def view_technician(headers):
                             else:
                                 # 2. Tạo URL và gọi API
                                 target_url = f"{TASK_SERVICE_URL}/api/tasks/{tid}/status"
-                                st.info(f"DEBUG: Đang gọi API tới: {target_url}") 
+                                # st.info(f"DEBUG: Đang gọi API tới: {target_url}") 
                                 
                                 res = api_request("PATCH", target_url, json={"status": "WAITING_MATERIAL_LIST"}, headers=headers)
                                 
