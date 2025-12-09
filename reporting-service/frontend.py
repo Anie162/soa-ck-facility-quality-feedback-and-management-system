@@ -403,17 +403,28 @@ def view_technician(headers):
                             st.caption(f"Nội dung gốc: {r_data.get('Content')}")
 
                         if st.button("🚀 XÁC NHẬN NHẬN VIỆC", key=f"acc_{tid}"):
-                            # Gọi API và lưu kết quả vào biến res
-                            res = api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "WAITING_MATERIAL_LIST"}, headers=headers)
-                            
-                            # Chỉ thông báo thành công nếu server trả về 200/201
-                            if res and res.status_code in [200, 201]:
-                                st.success("Đã nhận! Chuyển sang Tab 'Đang xử lý'.")
-                                time.sleep(1)
-                                st.rerun()
+                            # 1. KIỂM TRA ID TRƯỚC (Quan trọng)
+                            if not tid:
+                                st.error("Lỗi nghiêm trọng: Không tìm thấy ID nhiệm vụ (tid bị rỗng).")
                             else:
-                                # Nếu lỗi, in ra lỗi để biết tại sao
-                                st.error(f"Lỗi cập nhật: {res.text if res else 'Mất kết nối'}")
+                                # 2. Nếu có ID thì mới tạo URL và gọi API
+                                target_url = f"{TASK_SERVICE_URL}/api/tasks/{tid}/status"
+                                
+                                # In ra màn hình để Debug xem URL có đúng không
+                                st.info(f"DEBUG: Đang gọi API tới: {target_url}") 
+                                
+                                # Gọi API
+                                res = api_request("PATCH", target_url, json={"status": "WAITING_MATERIAL_LIST"}, headers=headers)
+                                
+                                # 3. Kiểm tra kết quả trả về
+                                if res and res.status_code in [200, 201]:
+                                    st.success("Đã nhận! Chuyển sang Tab 'Đang xử lý'.")
+                                    time.sleep(1)
+                                    st.rerun()
+                                else:
+                                    # Nếu lỗi, in ra chi tiết lỗi từ Server trả về
+                                    error_details = res.text if res else 'Không thể kết nối tới Server (Mất mạng hoặc Server ngủ)'
+                                    st.error(f"Lỗi cập nhật: {error_details}")
 
             # --- TAB 2: ĐANG XỬ LÝ (Đã cập nhật hiển thị) ---
             with tab2:
