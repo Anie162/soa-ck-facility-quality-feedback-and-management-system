@@ -381,6 +381,7 @@ def view_technician(headers):
                 if not new_tasks: st.write("Không có nhiệm vụ mới.")
                 for task in new_tasks:
                     # Lấy ID an toàn (ưu tiên _id, id, TaskId...)
+                    st.write(task)
                     tid = str(task.get('_id') or task.get('id') or task.get('TaskId') or task.get('taskCode') or '')
                     
                     report_id = task.get("reportId") or task.get("ReportId")
