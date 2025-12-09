@@ -81,6 +81,7 @@ def upload_file_to_media_service(uploaded_file):
             return None
     except Exception as e:
         st.error(f"Lỗi upload: {e}")
+        st.code(str(e))
         return None
 
 # ==========================================
