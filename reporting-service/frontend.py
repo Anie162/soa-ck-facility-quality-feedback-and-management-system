@@ -11,7 +11,6 @@ from datetime import datetime, timedelta
 REPORT_SERVICE_URL = "https://irc-service.onrender.com"
 TASK_SERVICE_URL = "https://task-management-service-kt6i.onrender.com"
 GENERAL_SERVICE_URL = "https://general-service-u75j.onrender.com"
-NOTIFICATION_URL = GENERAL_SERVICE_URL 
 
 # Danh sách loại sự cố
 INCIDENT_TYPES = {
@@ -83,29 +82,14 @@ def upload_file_to_media_service(uploaded_file):
         st.error(f"Lỗi upload: {e}")
         return None
 
-# --- EMAIL HELPERS ---
-def get_user_email_by_id(user_id, headers):
-    return "citizen@test.com" # Giả lập
-
-def send_notification_email(to_email, subject, message):
-    if not to_email: return False
-    print(f"[MOCK EMAIL] To: {to_email} | Subject: {subject}") 
-    return True
-
-# --- OTP HELPERS (MOCK) ---
-def send_otp(email, action="register"): return True
-def verify_otp(email, otp_code): return True
-
 # ==========================================
 # AUTHENTICATION FLOW
 # ==========================================
 if 'auth_mode' not in st.session_state: st.session_state.auth_mode = 'login'
-if 'otp_sent' not in st.session_state: st.session_state.otp_sent = False
 if 'temp_reg_data' not in st.session_state: st.session_state.temp_reg_data = {}
 
 def switch_auth_mode(mode):
     st.session_state.auth_mode = mode
-    st.session_state.otp_sent = False
     st.rerun()
 
 def render_auth_sidebar():
@@ -154,11 +138,7 @@ def render_auth_sidebar():
 
     elif mode == 'forgot':
         st.sidebar.title("🔑 Quên mật khẩu")
-        with st.sidebar.form("forgot_form"):
-            email_forgot = st.text_input("Email của bạn")
-            submitted = st.form_submit_button("Gửi yêu cầu")
-            if submitted:
-                st.sidebar.success(f"Đã gửi hướng dẫn (Giả lập)")
+        st.sidebar.info("Vui lòng liên hệ Admin để cấp lại mật khẩu.")
         if st.sidebar.button("🔙 Quay lại"): switch_auth_mode('login')
 
 def logout_handler():
@@ -265,7 +245,6 @@ def view_manager(headers):
                             api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "COMPLETED"}, headers=headers)
                             report_id = task.get('reportId')
                             api_request("PATCH", f"{REPORT_SERVICE_URL}/api/report/reports/{report_id}/status", params={"status": "COMPLETED", "note": "Đã nghiệm thu và hoàn tất."}, headers=headers)
-                            send_notification_email("citizen@test.com", "Sự cố hoàn tất", f"Sự cố {task.get('title')} đã xong.")
                             st.success("Hoàn tất quy trình!"); time.sleep(1.5); st.rerun()
 
     st.divider()
@@ -297,17 +276,14 @@ def view_manager(headers):
                         st.write("#### 🛠️ Giao Việc")
                         tech_res = api_request("GET", f"{GENERAL_SERVICE_URL}/api/users/role/Technician", headers=headers)
                         tech_list = tech_res.json() if (tech_res and tech_res.status_code == 200) else []
-                        sel_tech_email = "" 
+                        
                         if tech_list:
                             tech_opts = {}
                             for t in tech_list:
                                 tid = str(t.get('_id') or t.get('UserID') or t.get('id'))
                                 tname = t.get('Name') or t.get('name') or t.get('username') or "Noname"
-                                temail = t.get('Email') or t.get('email') or "No Email"
-                                tech_opts[tid] = f"{tname} ({temail})"
+                                tech_opts[tid] = f"{tname}"
                             sel_tech_id = st.selectbox("Chọn KTV:", list(tech_opts.keys()), format_func=lambda x: tech_opts[x])
-                            selected_tech_obj = next((t for t in tech_list if str(t.get('_id') or t.get('UserID') or t.get('id')) == sel_tech_id), {})
-                            sel_tech_email = selected_tech_obj.get('Email') or selected_tech_obj.get('email')
                         else:
                             sel_tech_id = st.text_input("Mã KTV:", placeholder="TECH...")
 
@@ -320,10 +296,7 @@ def view_manager(headers):
                             t_res = api_request("POST", f"{TASK_SERVICE_URL}/api/tasks", json=payload, headers=headers)
                             if t_res and t_res.status_code in [200, 201]:
                                 api_request("PATCH", f"{REPORT_SERVICE_URL}/api/report/reports/{selected_id}/status", params={"status": "IN_PROGRESS", "note": f"Giao cho {sel_tech_id}"}, headers=headers)
-                                if sel_tech_email:
-                                    send_notification_email(sel_tech_email, "NHIỆM VỤ MỚI", f"Task: {task_desc}\nDeadline: {deadline_date}")
-                                    st.success(f"Đã giao việc & gửi mail cho {sel_tech_email}")
-                                else: st.success("Đã giao việc")
+                                st.success(f"Đã giao việc thành công!")
                                 time.sleep(1.5); st.rerun()
                             else: st.error("Lỗi tạo Task")
 
@@ -334,13 +307,7 @@ def view_manager(headers):
                                 if new_st == "REJECTED" and not new_note: st.error("Thiếu lý do!")
                                 else:
                                     api_request("PATCH", f"{REPORT_SERVICE_URL}/api/report/reports/{selected_id}/status", params={"status": new_st, "note": new_note}, headers=headers)
-                                    if new_st in ["COMPLETED", "REJECTED"]:
-                                        citizen_email = get_user_email_by_id(r.get('ReporterID'), headers)
-                                        if citizen_email:
-                                            send_notification_email(citizen_email, f"Cập nhật phản ánh {r['Title']}", f"Trạng thái: {new_st}\nPhản hồi: {new_note}")
-                                            st.success(f"Đã cập nhật & gửi mail cho cư dân ({citizen_email})")
-                                        else: st.success("Đã cập nhật")
-                                    else: st.success("Đã cập nhật!")
+                                    st.success("Đã cập nhật!")
                                     time.sleep(1.5); st.rerun()
 
 # ==========================================
@@ -376,7 +343,7 @@ def view_technician(headers):
                         st.write(f"**Mô tả:** {task.get('description')}")
                         st.write(f"**Địa chỉ:** {r_data.get('Address',{}).get('Detail')}")
                         
-                        # --- XEM CHI TIẾT TASK ---
+                        # Xem chi tiết ảnh
                         with st.expander("Xem chi tiết Báo cáo gốc"):
                             st.write(f"**Nội dung:** {r_data.get('Content')}")
                             if r_data.get('MediaURL'): st.image(r_data['MediaURL'], width=300)
@@ -390,7 +357,7 @@ def view_technician(headers):
             with tab2:
                 if not active_tasks: st.write("Chưa có nhiệm vụ đang làm.")
                 for task in active_tasks:
-                    tid = task.get('id') or task.get('TaskId')
+                    tid = task.get('id') or task.get('taskCode')
                     status = task.get('status')
                     report_id = task.get("reportId")
                     
