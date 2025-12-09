@@ -56,16 +56,13 @@ def api_request(method, url, **kwargs):
         return None
 
 # ==========================================
-# AUTHENTICATION FLOW (LOGIN / REGISTER / FORGOT)
+# AUTHENTICATION FLOW
 # ==========================================
-
-# Khởi tạo trạng thái Auth Mode (login | register | forgot)
-if 'auth_mode' not in st.session_state:
-    st.session_state.auth_mode = 'login'
+if 'auth_mode' not in st.session_state: st.session_state.auth_mode = 'login'
 
 def switch_auth_mode(mode):
     st.session_state.auth_mode = mode
-    st.rerun() # Load lại trang để đổi giao diện
+    st.rerun()
 
 def render_auth_sidebar():
     mode = st.session_state.auth_mode
@@ -74,58 +71,53 @@ def render_auth_sidebar():
     if mode == 'login':
         st.sidebar.title("🔐 Đăng nhập")
         with st.sidebar.form("login_form"):
-            username = st.text_input("Tên đăng nhập")
+            email_input = st.text_input("Email")
             password = st.text_input("Mật khẩu", type="password")
             submitted = st.form_submit_button("Đăng nhập")
             
             if submitted:
                 with st.spinner("Đang xác thực..."):
-                    # Gọi API Login
-                    res = api_request("POST", f"{GENERAL_SERVICE_URL}/api/auth/login", json={"username": username, "password": password})
+                    # API Login
+                    res = api_request("POST", f"{GENERAL_SERVICE_URL}/api/users/login", json={"email": email_input, "password": password})
                     
                     if res and res.status_code == 200:
-                        st.session_state.user_info = res.json()
+                        user_data = res.json()
+                        # Lưu thông tin user
+                        st.session_state.user_info = user_data if "role" in user_data else user_data.get("user", {})
                         st.success("Thành công!")
                         st.rerun()
                     else:
-                        st.error("Sai tài khoản hoặc mật khẩu!")
+                        st.error("Đăng nhập thất bại! Kiểm tra Email/Pass.")
         
         st.sidebar.markdown("---")
-        # Nút chuyển sang Đăng ký & Quên MK
         col1, col2 = st.sidebar.columns(2)
-        with col1:
+        with col1: 
             if st.button("Đăng ký"): switch_auth_mode('register')
-        with col2:
+        with col2: 
             if st.button("Quên MK?"): switch_auth_mode('forgot')
 
-    # --- MODE 2: ĐĂNG KÝ (CHỈ DÀNH CHO CITIZEN/USER) ---
+    # --- MODE 2: ĐĂNG KÝ ---
     elif mode == 'register':
         st.sidebar.title("📝 Đăng ký Cư dân")
-        st.sidebar.info("Tài khoản mới sẽ mặc định là Cư dân (Citizen).")
-        
         with st.sidebar.form("register_form"):
-            new_user = st.text_input("Tên đăng nhập (*)")
-            new_pass = st.text_input("Mật khẩu (*)", type="password")
-            confirm_pass = st.text_input("Nhập lại mật khẩu (*)", type="password")
+            name = st.text_input("Họ và tên (*)")
             email = st.text_input("Email (*)")
-            full_name = st.text_input("Họ và tên")
+            phone = st.text_input("Số điện thoại (*)")
+            password = st.text_input("Mật khẩu (*)", type="password")
             
             submitted = st.form_submit_button("Tạo tài khoản")
             
             if submitted:
-                if new_pass != confirm_pass:
-                    st.error("Mật khẩu nhập lại không khớp!")
-                elif not new_user or not new_pass or not email:
+                if not name or not email or not password:
                     st.error("Vui lòng điền đủ thông tin!")
                 else:
                     payload = {
-                        "username": new_user,
-                        "password": new_pass,
+                        "name": name,
+                        "phone": phone,
                         "email": email,
-                        "full_name": full_name,
-                        "role": "Citizen" # <--- MẶC ĐỊNH ROLE LÀ USER (CITIZEN)
+                        "password": password,
+                        "role": "Citizen" # <--- QUAN TRỌNG: Gửi đúng 'Citizen' cho Backend
                     }
-                    # Gọi API Register (Giả định endpoint là /api/auth/register hoặc /api/users)
                     res = api_request("POST", f"{GENERAL_SERVICE_URL}/api/users/register", json=payload)
                     
                     if res and res.status_code in [200, 201]:
@@ -133,39 +125,35 @@ def render_auth_sidebar():
                         time.sleep(1)
                         switch_auth_mode('login')
                     else:
-                        err_msg = res.text if res else "Lỗi kết nối"
-                        st.error(f"Đăng ký thất bại: {err_msg}")
+                        st.error(f"Lỗi: {res.text if res else 'Mất kết nối'}")
         
-        if st.sidebar.button("🔙 Quay lại Đăng nhập"):
-            switch_auth_mode('login')
+        if st.sidebar.button("🔙 Quay lại"): switch_auth_mode('login')
 
     # --- MODE 3: QUÊN MẬT KHẨU ---
     elif mode == 'forgot':
         st.sidebar.title("🔑 Quên mật khẩu")
-        st.sidebar.caption("Nhập email để nhận link đặt lại mật khẩu.")
-        
         with st.sidebar.form("forgot_form"):
             email_forgot = st.text_input("Email của bạn")
             submitted = st.form_submit_button("Gửi yêu cầu")
             
             if submitted:
-                # Gọi API Forgot Password (Giả định)
                 res = api_request("POST", f"{GENERAL_SERVICE_URL}/api/users/reset-password", json={"email": email_forgot})
-                
-                # Vì thường đồ án chưa làm kỹ phần gửi mail, ta giả lập thành công
-                st.success(f"Nếu email {email_forgot} tồn tại, chúng tôi đã gửi hướng dẫn cho bạn.")
+                if res and res.status_code == 200:
+                    st.success("Đã gửi email hướng dẫn!")
+                else:
+                    st.error("Email không tồn tại hoặc lỗi hệ thống.")
         
-        if st.sidebar.button("🔙 Quay lại"):
-            switch_auth_mode('login')
+        if st.sidebar.button("🔙 Quay lại"): switch_auth_mode('login')
 
 def logout_handler():
     user = st.session_state.user_info
-    st.sidebar.success(f"👤 **{user.get('username', user.get('id'))}**")
+    display_name = user.get('name') or user.get('email') or user.get('id')
+    st.sidebar.success(f"👤 **{display_name}**")
     
-    # Hiển thị Role tiếng Việt cho đẹp
+    # Map role hiển thị (Code vẫn dùng Citizen, Manager...)
     role_map = {"Citizen": "Cư dân", "Manager": "Quản lý", "Technician": "Kỹ thuật viên"}
-    display_role = role_map.get(user.get('role'), user.get('role'))
-    st.sidebar.info(f"Vai trò: `{display_role}`")
+    current_role = user.get('role')
+    st.sidebar.info(f"Vai trò: `{role_map.get(current_role, current_role)}`")
     
     if st.sidebar.button("Đăng xuất"):
         st.session_state.user_info = None
@@ -173,7 +161,7 @@ def logout_handler():
         st.rerun()
 
 # ==========================================
-# GIAO DIỆN: CƯ DÂN (USER)
+# GIAO DIỆN: CƯ DÂN (Citizen)
 # ==========================================
 def view_resident(headers):
     st.title("🏙️ Cổng Phản Ánh Đô Thị")
@@ -195,8 +183,7 @@ def view_resident(headers):
             city = st.text_input("Tỉnh/Thành phố", value="TP. Hồ Chí Minh")
 
         if st.button("🚀 Gửi Phản Ánh", type="primary"):
-            if not media_url:
-                st.warning("Vui lòng đính kèm ảnh minh họa.")
+            if not media_url: st.warning("Vui lòng đính kèm ảnh minh họa.")
             else:
                 payload = {
                     "IncidentType": INCIDENT_TYPES[incident_key],
@@ -213,7 +200,8 @@ def view_resident(headers):
                 else: st.error("Gửi thất bại.")
 
     with tab2:
-        res = api_request("GET", f"{REPORT_SERVICE_URL}/api/report/reports", headers=headers)
+        # Lấy báo cáo của chính mình
+        res = api_request("GET", f"{REPORT_SERVICE_URL}/api/report/reports", params={"reporter_id": headers["user-id"]}, headers=headers)
         if res and res.status_code == 200:
             reports = res.json()
             if not reports: st.info("Bạn chưa có phản ánh nào.")
@@ -227,15 +215,17 @@ def view_resident(headers):
                         with c2:
                             st.write(f"**Nội dung:** {r.get('Content')}")
                             if r.get("Note"): st.info(f"👮 **Phản hồi:** {r['Note']}")
+                            
+                            # Khiếu nại (Chỉ khi COMPLETED)
                             if r['Status'] == "COMPLETED":
                                 with st.form(key=f"complaint_{r['ReportId']}"):
-                                    reason = st.text_input("Lý do khiếu nại (nếu chưa hài lòng):")
+                                    reason = st.text_input("Lý do khiếu nại:")
                                     if st.form_submit_button("Gửi Khiếu Nại"):
                                         res_c = api_request("POST", f"{REPORT_SERVICE_URL}/api/complaint/report/{r['ReportId']}", json={"Content": reason}, headers=headers)
                                         if res_c and res_c.status_code == 200: st.success("Đã ghi nhận khiếu nại!"); time.sleep(1); st.rerun()
 
 # ==========================================
-# GIAO DIỆN: QUẢN LÝ (MANAGER)
+# GIAO DIỆN: QUẢN LÝ (Manager)
 # ==========================================
 def view_manager(headers):
     st.title("👮 Trung Tâm Điều Hành")
@@ -243,7 +233,6 @@ def view_manager(headers):
     if not res: return
     reports = res.json()
     
-    # Dashboard
     c1, c2, c3 = st.columns(3)
     c1.metric("Tổng tiếp nhận", len(reports))
     c2.metric("Chờ xử lý", len([x for x in reports if x['Status'] == 'WAITING']))
@@ -269,12 +258,12 @@ def view_manager(headers):
                         st.write("---")
                         
                         st.write("#### 🛠️ Điều Phối & Xử Lý")
-                        # Lấy danh sách thợ
-                        tech_res = api_request("GET", f"{GENERAL_SERVICE_URL}/api/users", params={"role": "Techinician"}, headers=headers)
+                        # Lấy danh sách thợ (Role: Technician)
+                        tech_res = api_request("GET", f"{GENERAL_SERVICE_URL}/api/users/role/Technician", headers=headers)
                         tech_list = tech_res.json() if (tech_res and tech_res.status_code == 200) else []
                         
                         if tech_list:
-                            tech_opts = {t['id']: f"{t.get('username','Noname')} ({t['id']})" for t in tech_list}
+                            tech_opts = {str(t.get('_id', t.get('id'))): f"{t.get('name','Noname')}" for t in tech_list}
                             sel_tech = st.selectbox("Chọn Kỹ Thuật Viên:", list(tech_opts.keys()), format_func=lambda x: tech_opts[x])
                         else:
                             sel_tech = st.text_input("Mã KTV (Nhập tay):", placeholder="TECH...")
@@ -288,10 +277,10 @@ def view_manager(headers):
                                 t_res = api_request("POST", f"{TASK_SERVICE_URL}/api/tasks", json=payload, headers=headers)
                                 if t_res and t_res.status_code in [200, 201]:
                                     api_request("PATCH", f"{REPORT_SERVICE_URL}/api/report/reports/{selected_id}/status", params={"status": "IN_PROGRESS", "note": f"Đã giao cho {sel_tech}"}, headers=headers)
-                                    st.success("✅ Đã giao việc thành công!"); time.sleep(1); st.rerun()
+                                    st.success("✅ Giao việc thành công!"); time.sleep(1); st.rerun()
                                 else: st.error("Lỗi khi tạo Task!")
 
-                        with st.expander("Cập nhật trạng thái thủ công (Không giao việc)"):
+                        with st.expander("Cập nhật trạng thái thủ công"):
                             new_st = st.selectbox("Trạng thái mới", ["WAITING", "IN_PROGRESS", "COMPLETED", "REJECTED"], key="manual_st")
                             new_note = st.text_input("Lý do:", key="manual_note")
                             if st.button("Lưu thay đổi"):
@@ -301,7 +290,7 @@ def view_manager(headers):
                                     st.success("Đã cập nhật!"); st.rerun()
 
 # ==========================================
-# GIAO DIỆN: KỸ THUẬT VIÊN (TECHNICIAN)
+# GIAO DIỆN: KỸ THUẬT VIÊN (Technician)
 # ==========================================
 def view_technician(headers):
     st.title("👷 Cổng Kỹ Thuật Viên")
@@ -309,7 +298,7 @@ def view_technician(headers):
     
     if res and res.status_code == 200:
         tasks = res.json()
-        if not tasks: st.info("🎉 Bạn hiện không có nhiệm vụ nào.")
+        if not tasks: st.info("🎉 Không có nhiệm vụ nào.")
         else:
             st.subheader(f"Danh sách nhiệm vụ ({len(tasks)})")
             for task in tasks:
@@ -337,7 +326,7 @@ def view_technician(headers):
                                 if st.button("✅ Hoàn thành", key=f"end_{task.get('TaskId', task.get('id'))}"):
                                     api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{task.get('TaskId', task.get('id'))}", json={"Status": "COMPLETED"}, headers=headers)
                                     api_request("PATCH", f"{REPORT_SERVICE_URL}/api/report/reports/{report_id}/status", params={"status": "COMPLETED", "note": "KTV đã xử lý xong"}, headers=headers)
-                                    st.success("Tuyệt vời! Nhiệm vụ hoàn tất."); time.sleep(1); st.rerun()
+                                    st.success("Hoàn tất!"); time.sleep(1); st.rerun()
     else: st.error("Lỗi tải danh sách nhiệm vụ.")
 
 # ==========================================
@@ -347,14 +336,17 @@ if "user_info" not in st.session_state: st.session_state.user_info = None
 
 if not st.session_state.user_info:
     render_auth_sidebar()
-    st.info("👈 Vui lòng đăng nhập hoặc đăng ký tài khoản từ thanh bên trái.")
-    st.image("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQoE3Cza7rUEc5t7CTzWeQgHoBUkuhfr8RyPA&s", caption="Smart City Management")
+    st.info("👈 Vui lòng đăng nhập hoặc đăng ký.")
+    st.image("https://images.unsplash.com/photo-1449824913929-4b4794984059", caption="Smart City")
 else:
     logout_handler()
     user = st.session_state.user_info
     role = user.get("role")
-    req_headers = {"user-id": str(user.get("id")), "X-Role": role}
+    # Lấy ID user (mongoDB _id hoặc id string)
+    uid = str(user.get("_id") or user.get("id"))
+    req_headers = {"user-id": uid, "X-Role": role}
     
+    # --- PHÂN QUYỀN THEO ROLE CHUẨN (Citizen, Manager, Technician) ---
     if role == "Manager": view_manager(req_headers)
     elif role == "Technician": view_technician(req_headers)
-    else: view_resident(req_headers)
+    else: view_resident(req_headers) # Mặc định là Citizen
