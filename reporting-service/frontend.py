@@ -116,9 +116,9 @@ def render_auth_sidebar():
                         "phone": phone,
                         "email": email,
                         "password": password,
-                        "role": "Citizen" # <--- QUAN TRỌNG: Gửi đúng 'Citizen' cho Backend
+                        "role": "Citizen"
                     }
-                    res = api_request("POST", f"{GENERAL_SERVICE_URL}/api/users/register", json=payload)
+                    res = api_request("POST", "https://general-service-u75j.onrender.com/api/users/register", json=payload)
                     
                     if res and res.status_code in [200, 201]:
                         st.success("Đăng ký thành công! Vui lòng đăng nhập.")
