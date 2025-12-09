@@ -224,3 +224,24 @@ def delete_report(report_id: str):
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Report not found")
     return {"message": "Report deleted"}
+
+# --- DELETE ALL (DANGER ZONE) ---
+# Endpoint này dùng để XÓA SẠCH database báo cáo. Chỉ dành cho Dev/Manager.
+@router.delete("/reports/reset-database", response_model=dict)
+def delete_all_reports(
+    role: str = Depends(get_user_role)
+):
+    # 1. Chỉ cho phép MANAGER thực hiện
+    if role != "MANAGER":
+        raise HTTPException(
+            status_code=403, 
+            detail="Permission denied: Only MANAGER can perform a database reset."
+        )
+
+    # 2. Thực hiện xóa toàn bộ
+    result = reports_collection.delete_many({})
+
+    return {
+        "message": "All reports have been deleted successfully", 
+        "deleted_count": result.deleted_count
+    }
