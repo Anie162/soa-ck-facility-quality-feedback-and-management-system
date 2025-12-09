@@ -311,36 +311,38 @@ def view_manager(headers):
                                     time.sleep(1.5); st.rerun()
 
 # ==========================================
-# GIAO DIỆN: TECHNICIAN (FULL WORKFLOW)
+# GIAO DIỆN: TECHNICIAN (Đã sửa lỗi hiển thị)
 # ==========================================
 def view_technician(headers):
     st.title("👷 Cổng Kỹ Thuật Viên")
     
-    # --- SỬA ĐỔI QUAN TRỌNG ---
-    # Dựa vào ảnh Swagger, tham số đúng là 'technicianId' chứ không phải 'technician_id'
-    # Việc này đảm bảo chỉ lấy các task được giao cho người đang đăng nhập
-    params = {"technicianId": headers["user-id"]}
+    # Debug: Hiển thị ID đang đăng nhập để so sánh với Database/API
+    user_id = headers.get("user-id")
+    st.caption(f"🔑 Debug Info - Your User ID: `{user_id}`")
+
+    # 1. Sửa tham số thành 'technicianId' đúng như Swagger
+    params = {"technicianId": user_id}
     
     res = api_request("GET", f"{TASK_SERVICE_URL}/api/tasks", params=params, headers=headers)
     
     if res and res.status_code == 200:
         all_tasks = res.json()
         
-        # Lọc lại phía client một lần nữa để chắc chắn (phòng trường hợp API trả về lỗi)
-        my_tasks = [t for t in all_tasks if str(t.get('technicianId')) == str(headers['user-id'])]
+        # 2. Lọc chắc chắn theo ID (Client-side filter backup)
+        my_tasks = [t for t in all_tasks if str(t.get('technicianId')) == str(user_id)]
         
         if not my_tasks: 
             st.info("🎉 Bạn không có nhiệm vụ nào.")
+            st.warning(f"Lưu ý: API trả về 0 task cho ID `{user_id}`. Hãy kiểm tra lại xem User này đã được giao việc trong Database chưa.")
         else:
-            # Phân loại task dựa trên danh sách đã lọc (my_tasks)
-            # Tab 1: Mới (Chỉ trạng thái ASSIGNED)
-            new_tasks = [t for t in my_tasks if t.get('status') == "PENDING"]
+            # 3. Sửa logic phân loại: Thêm trạng thái "PENDING" vào danh sách New Tasks
+            # Tab 1: Mới (ASSIGNED hoặc PENDING)
+            new_tasks = [t for t in my_tasks if t.get('status') in ["ASSIGNED", "PENDING"]]
             
-            # Tab 2: Đang xử lý (Tất cả trạng thái khác ASSIGNED và COMPLETED)
-            # Bao gồm: WAITING_FOR_MATERIAL_REPORT, WAITING_FOR_APPROVAL, APPROVED_WAITING_FOR_FIX, IN_PROGRESS, WAITING_FOR_RESULT_APPROVAL
-            active_tasks = [t for t in my_tasks if t.get('status') not in ["PENDING", "COMPLETED"]]
+            # Tab 2: Đang xử lý (Không phải Mới và không phải Xong)
+            active_tasks = [t for t in my_tasks if t.get('status') not in ["ASSIGNED", "PENDING", "COMPLETED"]]
             
-            # Tab 3: Đã xong
+            # Tab 3: Xong
             done_tasks = [t for t in my_tasks if t.get('status') == "COMPLETED"]
 
             tab1, tab2, tab3 = st.tabs([f"🆕 Mới ({len(new_tasks)})", f"🚧 Đang xử lý ({len(active_tasks)})", f"✅ Xong ({len(done_tasks)})"])
@@ -356,6 +358,7 @@ def view_technician(headers):
                     
                     with st.container(border=True):
                         st.subheader(f"🆕 {r_data.get('Title', 'Unknown Task')}")
+                        st.info(f"Trạng thái: {task.get('status')}") # Hiển thị trạng thái để debug
                         st.warning(f"Deadline: {task.get('deadline', 'Chưa có')}")
                         st.write(f"**Mô tả:** {task.get('description')}")
                         st.write(f"**Địa chỉ:** {r_data.get('Address',{}).get('Detail')}")
@@ -365,6 +368,7 @@ def view_technician(headers):
                             if r_data.get('MediaURL'): st.image(r_data['MediaURL'], width=300)
 
                         if st.button("🚀 XÁC NHẬN NHẬN VIỆC", key=f"acc_{tid}"):
+                            # Khi bấm xác nhận, chuyển sang WAITING_FOR_MATERIAL_REPORT
                             api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "WAITING_FOR_MATERIAL_REPORT"}, headers=headers)
                             st.success("Đã nhận! Chuyển sang Tab 'Đang xử lý'."); time.sleep(1); st.rerun()
 
@@ -381,16 +385,13 @@ def view_technician(headers):
                     
                     with st.expander(f"[{status}] {task.get('title')}", expanded=True):
                         col_img, col_info = st.columns([1, 2])
-                        
                         with col_img:
                             st.markdown("**📸 Ảnh hiện trường:**")
-                            if r_data.get('MediaURL'):
-                                st.image(r_data['MediaURL'], use_column_width=True)
-                            else:
-                                st.info("Không có ảnh báo cáo.")
+                            if r_data.get('MediaURL'): st.image(r_data['MediaURL'], use_column_width=True)
+                            else: st.info("Không có ảnh báo cáo.")
 
                         with col_info:
-                            st.write(f"**📍 Địa chỉ:** {r_data.get('Address',{}).get('Detail')}, {r_data.get('Address',{}).get('Street')}")
+                            st.write(f"**📍 Địa chỉ:** {r_data.get('Address',{}).get('Detail')}")
                             st.info(f"📋 **Yêu cầu:** {task.get('description')}")
                             st.divider()
 
@@ -434,7 +435,7 @@ def view_technician(headers):
             with tab3:
                 st.dataframe(pd.DataFrame(done_tasks))
     else: st.error("Lỗi tải nhiệm vụ.")
-
+    
 # ==========================================
 # MAIN APP FLOW
 # ==========================================
