@@ -279,7 +279,6 @@ def view_manager(headers):
                                 "title": f"Xử lý: {r['Title']}",
                                 "description": task_desc, 
                                 "deadline": deadline_str, # Gửi deadline
-                                "Status": "ASSIGNED"
                             }
                             t_res = api_request("POST", f"{TASK_SERVICE_URL}/api/tasks", json=payload, headers=headers)
                             if t_res and t_res.status_code in [200, 201]:
