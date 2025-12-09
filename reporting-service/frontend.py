@@ -403,8 +403,17 @@ def view_technician(headers):
                             st.caption(f"Nội dung gốc: {r_data.get('Content')}")
 
                         if st.button("🚀 XÁC NHẬN NHẬN VIỆC", key=f"acc_{tid}"):
-                            api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "WAITING_MATERIAL_LIST"}, headers=headers)
-                            st.success("Đã nhận! Chuyển sang Tab 'Đang xử lý'."); time.sleep(1); st.rerun()
+                            # Gọi API và lưu kết quả vào biến res
+                            res = api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "WAITING_MATERIAL_LIST"}, headers=headers)
+                            
+                            # Chỉ thông báo thành công nếu server trả về 200/201
+                            if res and res.status_code in [200, 201]:
+                                st.success("Đã nhận! Chuyển sang Tab 'Đang xử lý'.")
+                                time.sleep(1)
+                                st.rerun()
+                            else:
+                                # Nếu lỗi, in ra lỗi để biết tại sao
+                                st.error(f"Lỗi cập nhật: {res.text if res else 'Mất kết nối'}")
 
             # --- TAB 2: ĐANG XỬ LÝ (Đã cập nhật hiển thị) ---
             with tab2:
