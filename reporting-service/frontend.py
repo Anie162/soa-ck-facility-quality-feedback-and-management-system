@@ -338,7 +338,7 @@ def view_technician(headers):
             
             # Tab 2: Đang xử lý (Tất cả trạng thái khác ASSIGNED và COMPLETED)
             # Bao gồm: WAITING_FOR_MATERIAL_REPORT, WAITING_FOR_APPROVAL, APPROVED_WAITING_FOR_FIX, IN_PROGRESS, WAITING_FOR_RESULT_APPROVAL
-            active_tasks = [t for t in my_tasks if t.get('status') not in ["ASSIGNED", "COMPLETED"]]
+            active_tasks = [t for t in my_tasks if t.get('status') not in ["PENDING", "COMPLETED"]]
             
             # Tab 3: Đã xong
             done_tasks = [t for t in my_tasks if t.get('status') == "COMPLETED"]
