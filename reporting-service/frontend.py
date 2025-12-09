@@ -281,7 +281,8 @@ def view_manager(headers):
                         if tech_list:
                             tech_opts = {}
                             for t in tech_list:
-                                tid = str(t.get('_id') or t.get('UserID') or t.get('id'))
+                                tid = str(t.get('UserID') or t.get('userID') or t.get('_id'))
+        
                                 tname = t.get('Name') or t.get('name') or t.get('username') or "Noname"
                                 tech_opts[tid] = f"{tname}"
                             sel_tech_id = st.selectbox("Chọn KTV:", list(tech_opts.keys()), format_func=lambda x: tech_opts[x])
