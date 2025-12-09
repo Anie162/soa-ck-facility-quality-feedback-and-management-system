@@ -307,7 +307,22 @@ def view_manager(headers):
                     with c1: 
                         if r.get('MediaURL'): st.image(r['MediaURL'], caption="Hiện trường")
                     with c2:
-                        st.write(f"**Người báo:** `{r.get('ReporterID', 'N/A')}`")
+                        reporter_id = r.get('ReporterID')
+                        reporter_name = "Không xác định"
+                   
+                        if reporter_id:
+                            target_url = f"{GENERAL_SERVICE_URL}/api/users/{reporter_id}"
+                            
+                            u_res = api_request("GET", target_url, headers=headers)
+                            
+                            if u_res and u_res.status_code == 200:
+                                user_data = u_res.json()
+                                
+                                # Lấy trực tiếp tên từ object trả về
+                                reporter_name = user_data.get("Name") or user_data.get("name") or "No Name"
+
+                        st.write(f"**Người báo:** {reporter_name}")
+                        # st.write(f"**Người báo:** `{r.get('ReporterID', 'N/A')}`")
                         st.write(f"**Mô tả:** {r.get('Content')}")
                         st.write("---")
                         st.write("#### 🛠️ Giao Việc")
