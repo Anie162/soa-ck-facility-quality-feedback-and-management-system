@@ -317,7 +317,7 @@ def view_technician(headers):
     st.title("👷 Cổng Kỹ Thuật Viên")
     
     # 1. Lấy Mongo ID của Technician từ Session (Đã lưu lúc Login)
-    tech_mongo_id = st.session_state.get("user_mongo_id")
+    tech_mongo_id = st.session_state.get("_id")
     
     # Nếu không có ID (do lỗi login hoặc session), dừng lại ngay
     if not tech_mongo_id:
@@ -457,7 +457,7 @@ def view_technician(headers):
                 st.dataframe(pd.DataFrame(done_tasks))
     else: 
         st.error("Không thể tải danh sách nhiệm vụ. Vui lòng thử lại sau.")
-        
+
 # ==========================================
 # MAIN APP FLOW
 # ==========================================
