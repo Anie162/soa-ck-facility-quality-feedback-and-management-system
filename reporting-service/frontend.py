@@ -453,6 +453,8 @@ else:
     role_check = str(raw_role).lower().strip()
     uid = str(user.get("UserID") or user.get("userID") or user.get("_id"))
     req_headers = {"user-id": uid, "X-Role": raw_role}
+    # Thêm .upper() để chuyển "Manager" thành "MANAGER"
+    req_headers = {"user-id": uid, "X-Role": str(raw_role).upper()}
     
     if role_check == "manager": view_manager(req_headers)
     elif role_check == "technician": view_technician(req_headers)
