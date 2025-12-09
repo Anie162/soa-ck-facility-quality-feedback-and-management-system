@@ -10,8 +10,6 @@ import time
 REPORT_SERVICE_URL = "https://irc-service.onrender.com"
 TASK_SERVICE_URL = "https://task-management-service-kt6i.onrender.com"
 GENERAL_SERVICE_URL = "https://general-service-u75j.onrender.com"
-# Giả sử Notification/OTP service nằm chung hoặc có URL riêng. 
-# Cập nhật URL chính xác nếu khác. Dựa vào ngữ cảnh trước đó là chung domain.
 NOTIFICATION_URL = GENERAL_SERVICE_URL 
 
 # Danh sách loại sự cố
@@ -44,7 +42,6 @@ def image_to_base64(uploaded_file):
 def reset_form():
     if 'uploader_key' not in st.session_state: st.session_state.uploader_key = 0
     st.session_state.uploader_key += 1
-    # Reset các input keys
     st.session_state["content_input"] = ""
     st.session_state["other_incident_input"] = ""
     st.session_state["detail_input"] = ""
@@ -66,49 +63,48 @@ def api_request(method, url, **kwargs):
         st.error(f"Lỗi: {e}")
         return None
 
-# --- HÀM TRA CỨU EMAIL CỦA USER ---
+# --- [TẠM KHÓA] EMAIL & OTP HELPERS ---
 def get_user_email_by_id(user_id, headers):
-    """Dùng ID lấy Email từ General Service"""
-    res = api_request("GET", f"{GENERAL_SERVICE_URL}/api/users/{user_id}", headers=headers)
-    if res and res.status_code == 200:
-        return res.json().get("email")
-    return None
+    # res = api_request("GET", f"{GENERAL_SERVICE_URL}/api/users/{user_id}", headers=headers)
+    # if res and res.status_code == 200:
+    #     return res.json().get("email")
+    return "test@email.com" # Giả lập email
 
-# --- HÀM GỬI EMAIL THÔNG BÁO ---
 def send_notification_email(to_email, subject, message):
     if not to_email: return False
-    payload = {"to": to_email, "subject": subject, "text": message}
-    # Endpoint gửi email thông báo
-    api_request("POST", f"{NOTIFICATION_URL}/api/email/send", json=payload)
+    # payload = {"to": to_email, "subject": subject, "text": message}
+    # api_request("POST", f"{NOTIFICATION_URL}/api/email/send", json=payload)
+    print(f"[MOCK EMAIL] To: {to_email} | Subject: {subject}") # In ra console để biết là có gọi
     return True
 
-# --- HÀM GỬI OTP ---
 def send_otp(email, action="register"):
-    payload = {"email": email, "action": action}
-    return api_request("POST", f"{NOTIFICATION_URL}/api/otp/send", json=payload)
+    # payload = {"email": email, "action": action}
+    # return api_request("POST", f"{NOTIFICATION_URL}/api/otp/send", json=payload)
+    print(f"[MOCK OTP] Sent to {email}")
+    return True # Luôn giả lập thành công
 
-# --- HÀM XÁC THỰC OTP ---
 def verify_otp(email, otp_code):
-    payload = {"email": email, "otp": otp_code}
-    res = api_request("POST", f"{NOTIFICATION_URL}/api/otp/verify", json=payload)
-    return res and res.status_code == 200
+    # payload = {"email": email, "otp": otp_code}
+    # res = api_request("POST", f"{NOTIFICATION_URL}/api/otp/verify", json=payload)
+    # return res and res.status_code == 200
+    return True # Luôn đúng
 
 # ==========================================
-# AUTHENTICATION FLOW (LOGIN / REGISTER / FORGOT)
+# AUTHENTICATION FLOW
 # ==========================================
 if 'auth_mode' not in st.session_state: st.session_state.auth_mode = 'login'
-if 'otp_sent' not in st.session_state: st.session_state.otp_sent = False
+# if 'otp_sent' not in st.session_state: st.session_state.otp_sent = False # Tạm tắt biến này
 if 'temp_reg_data' not in st.session_state: st.session_state.temp_reg_data = {}
 
 def switch_auth_mode(mode):
     st.session_state.auth_mode = mode
-    st.session_state.otp_sent = False # Reset trạng thái OTP
+    # st.session_state.otp_sent = False
     st.rerun()
 
 def render_auth_sidebar():
     mode = st.session_state.auth_mode
     
-    # --- MODE 1: ĐĂNG NHẬP ---
+    # --- MODE 1: LOGIN ---
     if mode == 'login':
         st.sidebar.title("🔐 Đăng nhập")
         with st.sidebar.form("login_form"):
@@ -134,116 +130,64 @@ def render_auth_sidebar():
         with c2: 
             if st.button("Quên MK?"): switch_auth_mode('forgot')
 
-    # --- MODE 2: ĐĂNG KÝ (CÓ OTP) ---
+    # --- MODE 2: REGISTER (BỎ QUA OTP) ---
     elif mode == 'register':
         st.sidebar.title("📝 Đăng ký Cư dân")
-        
-        # BƯỚC 1: NHẬP THÔNG TIN
-        if not st.session_state.otp_sent:
-            with st.sidebar.form("register_form"):
-                name = st.text_input("Họ và tên (*)")
-                email = st.text_input("Email (*)")
-                phone = st.text_input("Số điện thoại (*)")
-                password = st.text_input("Mật khẩu (*)", type="password")
-                confirm_pass = st.text_input("Nhập lại mật khẩu (*)", type="password")
-                submitted = st.form_submit_button("Tiếp tục (Gửi OTP)")
-                
-                if submitted:
-                    if password != confirm_pass: st.error("Mật khẩu không khớp!")
-                    elif not name or not email or not password or not phone: st.error("Thiếu thông tin!")
-                    else:
-                        st.session_state.temp_reg_data = {"name": name, "phone": phone, "email": email, "password": password, "role": "Citizen"}
-                        with st.spinner("Đang gửi mã OTP..."):
-                            res = send_otp(email, action="register")
-                            if res and res.status_code == 200:
-                                st.session_state.otp_sent = True
-                                st.success("Mã OTP đã gửi tới email của bạn!")
-                                time.sleep(1); st.rerun()
-                            else: st.error("Lỗi gửi OTP. Kiểm tra lại email.")
-        
-        # BƯỚC 2: NHẬP OTP
-        else:
-            st.sidebar.info(f"Nhập mã OTP gửi tới: {st.session_state.temp_reg_data['email']}")
-            otp_input = st.sidebar.text_input("Mã OTP")
-            if st.sidebar.button("Xác thực & Tạo tài khoản"):
-                if verify_otp(st.session_state.temp_reg_data['email'], otp_input):
-                    # OTP đúng -> Gọi API tạo tài khoản
-                    res = api_request("POST", f"{GENERAL_SERVICE_URL}/api/users/register", json=st.session_state.temp_reg_data)
-                    if res and res.status_code in [200, 201]:
-                        st.sidebar.success("Đăng ký thành công!")
-                        time.sleep(1); switch_auth_mode('login')
-                    else: st.sidebar.error(f"Lỗi tạo tài khoản: {res.text if res else ''}")
-                else: st.sidebar.error("Mã OTP không đúng!")
+        # Hiển thị form đăng ký trực tiếp luôn
+        with st.sidebar.form("register_form"):
+            name = st.text_input("Họ và tên (*)")
+            email = st.text_input("Email (*)")
+            phone = st.text_input("Số điện thoại (*)")
+            password = st.text_input("Mật khẩu (*)", type="password")
+            confirm_pass = st.text_input("Nhập lại mật khẩu (*)", type="password")
             
-            if st.sidebar.button("Gửi lại OTP"):
-                send_otp(st.session_state.temp_reg_data['email'], action="register")
-                st.sidebar.success("Đã gửi lại!")
+            submitted = st.form_submit_button("Tạo tài khoản")
+            
+            if submitted:
+                if password != confirm_pass: st.error("Mật khẩu không khớp!")
+                elif not name or not email or not password or not phone: st.error("Thiếu thông tin!")
+                else:
+                    payload = {"name": name, "phone": phone, "email": email, "password": password, "role": "Citizen"}
+                    
+                    # Gọi thẳng API tạo user (Bỏ qua bước verify OTP)
+                    res = api_request("POST", f"{GENERAL_SERVICE_URL}/api/users/register", json=payload)
+                    
+                    if res and res.status_code in [200, 201]:
+                        st.sidebar.success("Đăng ký thành công! Vui lòng đăng nhập.")
+                        time.sleep(1); switch_auth_mode('login')
+                    else:
+                        st.sidebar.error(f"Lỗi: {res.text if res else ''}")
         
         if st.sidebar.button("🔙 Quay lại"): switch_auth_mode('login')
 
-    # --- MODE 3: QUÊN MẬT KHẨU (CÓ OTP & ĐỔI PASS) ---
+    # --- MODE 3: FORGOT PASSWORD (BỎ QUA OTP) ---
     elif mode == 'forgot':
         st.sidebar.title("🔑 Quên mật khẩu")
+        with st.sidebar.form("forgot_form"):
+            email_forgot = st.text_input("Email của bạn")
+            submitted = st.form_submit_button("Gửi yêu cầu")
+            
+            if submitted:
+                # Giả lập thành công
+                st.sidebar.success(f"Đã gửi hướng dẫn reset password (Giả lập).")
+                # api_request("POST", f"{GENERAL_SERVICE_URL}/api/users/reset-password", json={"email": email_forgot})
         
-        if not st.session_state.otp_sent:
-            email_forgot = st.sidebar.text_input("Email của bạn")
-            if st.sidebar.button("Gửi OTP Reset"):
-                if not email_forgot: st.sidebar.error("Vui lòng nhập email!")
-                else:
-                    st.session_state.temp_reg_data['email'] = email_forgot # Dùng chung biến temp
-                    res = send_otp(email_forgot, action="reset-password") # Action tùy backend quy định
-                    if res and res.status_code == 200:
-                        st.session_state.otp_sent = True
-                        st.sidebar.success("Đã gửi OTP!")
-                        time.sleep(0.5); st.rerun()
-                    else: st.sidebar.error("Email không tồn tại hoặc lỗi hệ thống.")
-        else:
-            st.sidebar.info(f"Reset mật khẩu cho: {st.session_state.temp_reg_data.get('email')}")
-            otp_code = st.sidebar.text_input("Mã OTP")
-            new_pass = st.sidebar.text_input("Mật khẩu mới", type="password")
-            
-            if st.sidebar.button("Đổi mật khẩu"):
-                email = st.session_state.temp_reg_data.get('email')
-                if verify_otp(email, otp_code):
-                    # Xác thực OK -> Gọi API đổi pass
-                    # Lưu ý: Cần endpoint đổi pass nhận (email, new_password). 
-                    # Nếu endpoint /api/users/reset-password chỉ gửi mail thì cần backend hỗ trợ endpoint update pass.
-                    # Giả định endpoint update pass là PUT /api/users/password (hoặc tương tự)
-                    # Ở đây giả lập thành công vì chưa rõ endpoint update pass cụ thể của bạn.
-                    # res = api_request("PUT", f"{GENERAL_SERVICE_URL}/api/users/password", json={"email": email, "password": new_pass})
-                    
-                    # Nếu dùng endpoint reset-password cũ (chỉ gửi mail link) thì luồng OTP này hơi thừa.
-                    # Tạm thời giả lập thành công để test luồng UI.
-                    st.sidebar.success("Đổi mật khẩu thành công! Vui lòng đăng nhập lại.")
-                    time.sleep(1); switch_auth_mode('login')
-                else: st.sidebar.error("OTP sai!")
-            
-            if st.sidebar.button("Gửi lại OTP"):
-                 send_otp(st.session_state.temp_reg_data.get('email'), action="reset-password")
-
         if st.sidebar.button("🔙 Quay lại"): switch_auth_mode('login')
 
 def logout_handler():
     user = st.session_state.user_info
-    # Lấy tên hiển thị
-    display_name = user.get('name') or user.get('Name') or user.get('email') or user.get('Email') or user.get('id')
-    
+    display_name = user.get('name') or user.get('Name') or user.get('email') or user.get('Email')
     st.sidebar.success(f"👤 **{display_name}**")
     
-    # Map role
     raw_role = user.get('Role') or user.get('role', 'Unknown')
     role_map = {"Citizen": "Cư dân", "Manager": "Quản lý", "Technician": "Kỹ thuật viên"}
     st.sidebar.info(f"Vai trò: `{role_map.get(raw_role, raw_role)}`")
     
-    # Hiển thị thêm thông tin (Email, ID)
-    st.sidebar.caption(f"Email: {user.get('email', user.get('Email', ''))}")
-    st.sidebar.caption(f"ID: {str(user.get('_id') or user.get('id'))}")
-
     if st.sidebar.button("Đăng xuất"):
         st.session_state.user_info = None; st.session_state.auth_mode = 'login'; st.rerun()
 
 # ==========================================
-# GIAO DIỆN: CƯ DÂN (USER)
+# GIAO DIỆN: CƯ DÂN
 # ==========================================
 def view_resident(headers):
     st.title("🏙️ Cổng Phản Ánh Đô Thị")
@@ -287,7 +231,7 @@ def view_resident(headers):
         res = api_request("GET", f"{REPORT_SERVICE_URL}/api/report/reports", params={"reporter_id": headers["user-id"]}, headers=headers)
         if res and res.status_code == 200:
             reports = res.json()
-            if not reports: st.info("Bạn chưa có phản ánh nào.")
+            if not reports: st.info("Chưa có phản ánh nào.")
             else:
                 for r in reports:
                     status_icon = "🟢" if r['Status'] == "COMPLETED" else "🔴" if r['Status'] == "REJECTED" else "🟡"
@@ -299,7 +243,6 @@ def view_resident(headers):
                             st.write(f"**Nội dung:** {r.get('Content')}")
                             if r.get("Note"): st.info(f"👮 **Phản hồi:** {r['Note']}")
                             
-                            # Khiếu nại
                             if r['Status'] == "COMPLETED":
                                 with st.form(key=f"complaint_{r['ReportId']}"):
                                     reason = st.text_input("Lý do khiếu nại:")
@@ -315,7 +258,6 @@ def view_manager(headers):
     res = api_request("GET", f"{REPORT_SERVICE_URL}/api/report/reports", headers=headers)
     if not res: return
     reports = res.json()
-    
     c1, c2, c3 = st.columns(3)
     c1.metric("Tổng đơn", len(reports))
     c2.metric("Chờ xử lý", len([x for x in reports if x['Status'] == 'WAITING']))
@@ -326,7 +268,6 @@ def view_manager(headers):
         df = pd.DataFrame(reports)
         st.dataframe(df[["Status", "ReportId", "Title", "Created_at"]], use_container_width=True, hide_index=True)
         selected_id = st.selectbox("👉 Chọn Mã Hồ Sơ:", df["ReportId"].tolist())
-        
         if selected_id:
             r = next((item for item in reports if item["ReportId"] == selected_id), None)
             if r:
@@ -339,12 +280,10 @@ def view_manager(headers):
                         st.write(f"**Người báo:** `{r.get('ReporterID', 'N/A')}`")
                         st.write(f"**Mô tả:** {r.get('Content')}")
                         st.write("---")
-                        
                         st.write("#### 🛠️ Giao Việc")
                         tech_res = api_request("GET", f"{GENERAL_SERVICE_URL}/api/users/role/Technician", headers=headers)
                         tech_list = tech_res.json() if (tech_res and tech_res.status_code == 200) else []
                         sel_tech_email = "" 
-                        
                         if tech_list:
                             tech_opts = {}
                             for t in tech_list:
@@ -352,26 +291,26 @@ def view_manager(headers):
                                 tname = t.get('Name') or t.get('name') or t.get('username') or "Noname"
                                 temail = t.get('Email') or t.get('email') or "No Email"
                                 tech_opts[tid] = f"{tname} ({temail})"
-                            
                             sel_tech_id = st.selectbox("Chọn KTV:", list(tech_opts.keys()), format_func=lambda x: tech_opts[x])
-                            # Lấy email thợ chọn
                             selected_tech_obj = next((t for t in tech_list if str(t.get('_id') or t.get('UserID') or t.get('id')) == sel_tech_id), {})
                             sel_tech_email = selected_tech_obj.get('Email') or selected_tech_obj.get('email')
                         else:
-                            sel_tech_id = st.text_input("Mã KTV (Nhập tay):", placeholder="TECH...")
+                            sel_tech_id = st.text_input("Mã KTV:", placeholder="TECH...")
 
                         task_desc = st.text_input("Mô tả công việc:", value=f"Xử lý: {r['Title']}")
-                        
                         if st.button("🚀 Giao Việc"):
-                            payload = {"ReportId": r["ReportId"], "TechnicianID": sel_tech_id, "ManagerID": headers["user-id"], "Description": task_desc, "Status": "ASSIGNED"}
+                            # Payload tạo task
+                            # deadline giả lập +3 ngày
+                            from datetime import datetime, timedelta
+                            deadline_str = (datetime.utcnow() + timedelta(days=3)).isoformat() + "Z"
+                            
+                            payload = {"reportId": r["ReportId"], "technicianId": sel_tech_id, "managerId": headers["user-id"], "title": f"Xử lý: {r['Title']}", "description": task_desc, "deadline": deadline_str}
                             t_res = api_request("POST", f"{TASK_SERVICE_URL}/api/tasks", json=payload, headers=headers)
                             if t_res and t_res.status_code in [200, 201]:
                                 api_request("PATCH", f"{REPORT_SERVICE_URL}/api/report/reports/{selected_id}/status", params={"status": "IN_PROGRESS", "note": f"Giao cho {sel_tech_id}"}, headers=headers)
-                                # Gửi Email cho Technician
                                 if sel_tech_email:
-                                    msg = f"Bạn nhận được task mới!\nID: {r['ReportId']}\nNội dung: {task_desc}\nĐịa chỉ: {r.get('Address',{}).get('Detail')}"
-                                    send_notification_email(sel_tech_email, "NHIỆM VỤ MỚI - SmartCity", msg)
-                                    st.success(f"Đã giao việc & gửi mail cho {sel_tech_email}")
+                                    send_notification_email(sel_tech_email, "NHIỆM VỤ MỚI", f"Bạn được giao xử lý sự cố {r['Title']}.\nĐịa chỉ: {r.get('Address',{}).get('Detail')}")
+                                    st.success(f"Đã giao việc & gửi mail cho {sel_tech_email} (Giả lập)")
                                 else: st.success("Đã giao việc")
                                 time.sleep(1.5); st.rerun()
                             else: st.error("Lỗi tạo Task")
@@ -383,13 +322,11 @@ def view_manager(headers):
                                 if new_st == "REJECTED" and not new_note: st.error("Thiếu lý do!")
                                 else:
                                     api_request("PATCH", f"{REPORT_SERVICE_URL}/api/report/reports/{selected_id}/status", params={"status": new_st, "note": new_note}, headers=headers)
-                                    
-                                    # Gửi Email cho Citizen khi Completed/Rejected
                                     if new_st in ["COMPLETED", "REJECTED"]:
                                         citizen_email = get_user_email_by_id(r.get('ReporterID'), headers)
                                         if citizen_email:
-                                            send_notification_email(citizen_email, f"Cập nhật phản ánh {r['ReportId']}", f"Trạng thái: {new_st}\nPhản hồi: {new_note}")
-                                            st.success(f"Đã cập nhật & gửi mail cho cư dân ({citizen_email})")
+                                            send_notification_email(citizen_email, f"Cập nhật phản ánh {r['Title']}", f"Trạng thái: {new_st}\nPhản hồi: {new_note}")
+                                            st.success(f"Đã cập nhật & gửi mail cho cư dân (Giả lập)")
                                         else: st.success("Đã cập nhật")
                                     else: st.success("Đã cập nhật!")
                                     time.sleep(1.5); st.rerun()
@@ -428,14 +365,13 @@ def view_technician(headers):
                                     api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{task.get('TaskId', task.get('id'))}", json={"Status": "COMPLETED"}, headers=headers)
                                     api_request("PATCH", f"{REPORT_SERVICE_URL}/api/report/reports/{report_id}/status", params={"status": "COMPLETED", "note": "KTV đã xử lý xong"}, headers=headers)
                                     
-                                    # Gửi Email cho Citizen khi KTV hoàn thành
                                     citizen_email = get_user_email_by_id(r_data.get('ReporterID'), headers)
                                     if citizen_email:
                                         send_notification_email(citizen_email, "Thông báo hoàn thành", f"Sự cố {r_data.get('Title')} đã được KTV xử lý xong.")
-                                        st.success(f"Hoàn tất! Đã gửi mail cho cư dân.")
+                                        st.success(f"Hoàn tất! Đã gửi mail cho cư dân (Giả lập)")
                                     else: st.success("Hoàn tất!")
                                     time.sleep(1.5); st.rerun()
-    else: st.error("Lỗi tải nhiệm vụ.")
+    else: st.error("Lỗi tải danh sách nhiệm vụ.")
 
 # ==========================================
 # MAIN APP FLOW
@@ -449,14 +385,11 @@ if not st.session_state.user_info:
 else:
     logout_handler()
     user = st.session_state.user_info
-    
-    # Sửa lỗi lấy role và id linh hoạt
     raw_role = user.get("Role") or user.get("role", "")
     role_check = str(raw_role).lower()
     uid = str(user.get("_id") or user.get("id"))
-    
     req_headers = {"user-id": uid, "X-Role": raw_role}
     
-    if role_check == "manager": view_manager(req_headers)
-    elif role_check == "technician": view_technician(req_headers)
+    if role_check == "Manager": view_manager(req_headers)
+    elif role_check == "Technician": view_technician(req_headers)
     else: view_resident(req_headers)
