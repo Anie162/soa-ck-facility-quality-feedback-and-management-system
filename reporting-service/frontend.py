@@ -334,7 +334,7 @@ def view_technician(headers):
         else:
             # Phân loại task dựa trên danh sách đã lọc (my_tasks)
             # Tab 1: Mới (Chỉ trạng thái ASSIGNED)
-            new_tasks = [t for t in my_tasks if t.get('status') == "ASSIGNED"]
+            new_tasks = [t for t in my_tasks if t.get('status') == "PENDING"]
             
             # Tab 2: Đang xử lý (Tất cả trạng thái khác ASSIGNED và COMPLETED)
             # Bao gồm: WAITING_FOR_MATERIAL_REPORT, WAITING_FOR_APPROVAL, APPROVED_WAITING_FOR_FIX, IN_PROGRESS, WAITING_FOR_RESULT_APPROVAL
