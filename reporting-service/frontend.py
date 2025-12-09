@@ -378,7 +378,9 @@ def view_technician(headers):
             with tab1:
                 if not new_tasks: st.write("Không có nhiệm vụ mới.")
                 for task in new_tasks:
-                    tid = task.get('id') or task.get('TaskId')
+                    # Lấy ID an toàn (ưu tiên _id, id, TaskId...)
+                    tid = str(task.get('_id') or task.get('id') or task.get('TaskId') or task.get('taskCode') or '')
+                    
                     report_id = task.get("reportId") or task.get("ReportId")
                     
                     # Lấy chi tiết Report gốc
@@ -403,26 +405,22 @@ def view_technician(headers):
                             st.caption(f"Nội dung gốc: {r_data.get('Content')}")
 
                         if st.button("🚀 XÁC NHẬN NHẬN VIỆC", key=f"acc_{tid}"):
-                            # 1. KIỂM TRA ID TRƯỚC (Quan trọng)
+                            # 1. KIỂM TRA ID TRƯỚC
                             if not tid:
-                                st.error("Lỗi nghiêm trọng: Không tìm thấy ID nhiệm vụ (tid bị rỗng).")
+                                st.error("Lỗi nghiêm trọng: Không tìm thấy ID nhiệm vụ (tid bị rỗng). Vui lòng kiểm tra lại Database.")
                             else:
-                                # 2. Nếu có ID thì mới tạo URL và gọi API
+                                # 2. Tạo URL và gọi API
                                 target_url = f"{TASK_SERVICE_URL}/api/tasks/{tid}/status"
-                                
-                                # In ra màn hình để Debug xem URL có đúng không
                                 st.info(f"DEBUG: Đang gọi API tới: {target_url}") 
                                 
-                                # Gọi API
                                 res = api_request("PATCH", target_url, json={"status": "WAITING_MATERIAL_LIST"}, headers=headers)
                                 
-                                # 3. Kiểm tra kết quả trả về
+                                # 3. Kiểm tra kết quả
                                 if res and res.status_code in [200, 201]:
                                     st.success("Đã nhận! Chuyển sang Tab 'Đang xử lý'.")
                                     time.sleep(1)
                                     st.rerun()
                                 else:
-                                    # Nếu lỗi, in ra chi tiết lỗi từ Server trả về
                                     error_details = res.text if res else 'Không thể kết nối tới Server (Mất mạng hoặc Server ngủ)'
                                     st.error(f"Lỗi cập nhật: {error_details}")
 
