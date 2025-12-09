@@ -374,7 +374,7 @@ def view_technician(headers):
     else: st.error("Lỗi tải danh sách nhiệm vụ.")
 
 # ==========================================
-# MAIN APP FLOW
+# MAIN APP FLOW (ĐÃ FIX LỖI PHÂN QUYỀN)
 # ==========================================
 if "user_info" not in st.session_state: st.session_state.user_info = None
 
@@ -385,11 +385,20 @@ if not st.session_state.user_info:
 else:
     logout_handler()
     user = st.session_state.user_info
-    raw_role = user.get("Role") or user.get("Role", "")
-    role_check = str(raw_role).lower()
-    uid = str(user.get("_id") or user.get("id"))
-    req_headers = {"user-id": uid, "X-Role": raw_role}
     
-    if role_check == "Manager": view_manager(req_headers)
-    elif role_check == "Technician": view_technician(req_headers)
-    else: view_resident(req_headers)
+    # Lấy role từ backend (có thể là 'Role' hoặc 'role')
+    raw_role = user.get("Role") or user.get("role", "")
+    
+    # Chuyển về chữ thường để so sánh cho chắc chắn
+    role_check = str(raw_role).lower().strip() 
+    
+    uid = str(user.get("_id") or user.get("id"))
+    req_headers = {"user-id": uid, "X-Role": raw_role} # Gửi role gốc lên header
+    
+    # --- SỬA Ở ĐÂY: So sánh với chuỗi thường toàn bộ ---
+    if role_check == "manager": 
+        view_manager(req_headers)
+    elif role_check == "technician": 
+        view_technician(req_headers)
+    else: 
+        view_resident(req_headers)
