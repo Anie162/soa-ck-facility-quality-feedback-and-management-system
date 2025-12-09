@@ -63,7 +63,8 @@ def api_request(method, url, **kwargs):
         st.error(f"🔌 Không thể kết nối tới: {url.split('/')[2]}")
         return None
     except Exception as e:
-        st.error(f"Lỗi: {e}")
+        # IN RA LỖI GỐC ĐỂ DEBUG
+        st.error(f"❌ LỖI GỐC (Copy dòng này gửi tôi): {type(e).__name__}: {e}") 
         return None
 
 # --- MEDIA SERVICE UPLOAD ---
