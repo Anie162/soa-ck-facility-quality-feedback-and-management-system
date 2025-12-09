@@ -105,7 +105,13 @@ def render_auth_sidebar():
                     res = api_request("POST", f"{GENERAL_SERVICE_URL}/api/users/login", json={"email": email_input, "password": password})
                     if res and res.status_code == 200:
                         user_data = res.json()
-                        st.session_state.user_info = user_data if "role" in user_data else user_data.get("user", {})
+                        # --- FIX LỖI Ở ĐÂY ---
+                        # Kiểm tra cả "Role" (hoa) và "role" (thường) để tránh bị lỗi None
+                        if "Role" in user_data or "role" in user_data:
+                            st.session_state.user_info = user_data
+                        else:
+                            st.session_state.user_info = user_data.get("user", {})
+                        
                         st.success("Thành công!")
                         st.rerun()
                     else: st.error("Đăng nhập thất bại!")
@@ -115,8 +121,9 @@ def render_auth_sidebar():
             if st.button("Đăng ký"): switch_auth_mode('register')
         with c2: 
             if st.button("Quên MK?"): switch_auth_mode('forgot')
-
+    # ... (Giữ nguyên phần register và forgot bên dưới)
     elif mode == 'register':
+        # (Giữ nguyên code phần register cũ)
         st.sidebar.title("📝 Đăng ký Cư dân")
         with st.sidebar.form("register_form"):
             name = st.text_input("Họ và tên (*)")
@@ -435,7 +442,7 @@ def view_technician(headers):
             with tab3:
                 st.dataframe(pd.DataFrame(done_tasks))
     else: st.error("Lỗi tải nhiệm vụ.")
-    
+
 # ==========================================
 # MAIN APP FLOW
 # ==========================================
@@ -447,9 +454,25 @@ if not st.session_state.user_info:
 else:
     logout_handler()
     user = st.session_state.user_info
-    raw_role = user.get("Role") or user.get("role", "")
+    
+    # 1. Lấy Role (Xử lý cả viết hoa/viết thường)
+    raw_role = user.get("Role") or user.get("role") or "Citizen"
     role_check = str(raw_role).lower().strip()
-    uid = str(user.get("_id") or user.get("id"))
+    
+    # 2. Lấy ID người dùng
+    # QUAN TRỌNG: Dựa vào ảnh Swagger Task, hệ thống dùng "_id" (ví dụ: 6937cb...) để gán task.
+    # Trường "UserID" (ví dụ: 42a002...) là UUID nhưng không được dùng trong bảng Task.
+    # Vì vậy ta ưu tiên lấy "_id" trước.
+    uid = user.get("_id") or user.get("UserID") or user.get("id")
+    uid = str(uid) if uid else None
+
+    # Debug: Hiển thị ID để kiểm tra (Xóa dòng này khi đã chạy ổn)
+    # st.caption(f"Debug Login: Role={raw_role} | ID={uid}")
+
+    if not uid:
+        st.error("⚠️ Lỗi dữ liệu: Không tìm thấy ID người dùng. Vui lòng đăng xuất và đăng nhập lại.")
+        st.stop()
+
     req_headers = {"user-id": uid, "X-Role": raw_role}
     
     if role_check == "manager": view_manager(req_headers)
