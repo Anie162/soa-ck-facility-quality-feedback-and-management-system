@@ -415,7 +415,7 @@ def view_technician(headers):
             with tab2:
                 if not active_tasks: st.write("Chưa có nhiệm vụ đang làm.")
                 for task in active_tasks:
-                    tid = task.get('id') or task.get('taskCode')
+                    tid = task.get('id') or task.get('TaskId')
                     status = task.get('status')
                     report_id = task.get("reportId")
                     
