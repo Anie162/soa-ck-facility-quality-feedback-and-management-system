@@ -8,3 +8,4 @@ certifi
 streamlit
 requests
 pandas
+httpx
