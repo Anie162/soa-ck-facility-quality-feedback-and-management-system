@@ -311,43 +311,21 @@ def view_manager(headers):
                                     time.sleep(1.5); st.rerun()
 
 # ==========================================
-# GIAO DIỆN: TECHNICIAN (Đã cập nhật bộ lọc & hiển thị)
+# GIAO DIỆN: TECHNICIAN (FULL WORKFLOW)
 # ==========================================
 def view_technician(headers):
     st.title("👷 Cổng Kỹ Thuật Viên")
-    
-    # 1. Lấy Mongo ID của Technician từ Session (Đã lưu lúc Login)
-    tech_mongo_id = st.session_state.get("_id")
-    
-    # Nếu không có ID (do lỗi login hoặc session), dừng lại ngay
-    if not tech_mongo_id:
-        st.error("⚠️ Lỗi xác thực: Không tìm thấy ID Kỹ thuật viên. Vui lòng đăng xuất và đăng nhập lại.")
-        return
-
-    st.caption(f"🆔 Tech ID: `{tech_mongo_id}`")
-
-    # 2. Gọi API để lấy danh sách Task
-    # Truyền tham số technicianId để Backend lọc trước
-    params = {"technicianId": tech_mongo_id}
-    res = api_request("GET", f"{TASK_SERVICE_URL}/api/tasks", params=params, headers=headers)
+    res = api_request("GET", f"{TASK_SERVICE_URL}/api/tasks", params={"technician_id": headers["user-id"]}, headers=headers)
     
     if res and res.status_code == 200:
-        all_data = res.json()
-        
-        # 3. LỌC CLIENT-SIDE (QUAN TRỌNG)
-        # Đảm bảo tuyệt đối chỉ lấy các task có technicianId khớp với người đang đăng nhập
-        # str(...) được dùng để tránh lỗi so sánh giữa string và objectId
-        my_tasks = [t for t in all_data if str(t.get('technicianId')) == str(tech_mongo_id)]
-        
-        if not my_tasks: 
-            st.info("🎉 Bạn hiện không có nhiệm vụ nào được giao.")
+        all_tasks = res.json()
+        if not all_tasks: 
+            st.info("🎉 Không có nhiệm vụ nào.")
         else:
-            # Phân loại trạng thái
-            new_tasks = [t for t in my_tasks if t.get('status') in ["ASSIGNED", "PENDING"]]
-            active_tasks = [t for t in my_tasks if t.get('status') not in ["ASSIGNED", "PENDING", "COMPLETED"]]
-            done_tasks = [t for t in my_tasks if t.get('status') == "COMPLETED"]
+            new_tasks = [t for t in all_tasks if t.get('status') == "PENDING"]
+            active_tasks = [t for t in all_tasks if t.get('status') not in ["PENDING", "COMPLETED"] and t.get('technicianId') == headers["user-id"]]
+            done_tasks = [t for t in all_tasks if t.get('status') == "COMPLETED"]
 
-            # Tạo Tabs
             tab1, tab2, tab3 = st.tabs([f"🆕 Mới ({len(new_tasks)})", f"🚧 Đang xử lý ({len(active_tasks)})", f"✅ Xong ({len(done_tasks)})"])
             
             # --- TAB 1: NHIỆM VỤ MỚI ---
@@ -356,28 +334,22 @@ def view_technician(headers):
                 for task in new_tasks:
                     tid = task.get('id') or task.get('TaskId')
                     report_id = task.get("reportId") or task.get("ReportId")
-                    
-                    # Lấy thông tin Report gốc
                     r_res = api_request("GET", f"{REPORT_SERVICE_URL}/api/report/reports/{report_id}", headers=headers)
                     r_data = r_res.json() if r_res and r_res.status_code == 200 else {}
                     
                     with st.container(border=True):
-                        st.subheader(f"🆕 {r_data.get('Title', 'Nhiệm vụ mới')}")
+                        st.subheader(f"🆕 {r_data.get('Title', 'Unknown Task')}")
+                        st.warning(f"Deadline: {task.get('deadline', 'Chưa có')}")
+                        st.write(f"**Mô tả:** {task.get('description')}")
+                        st.write(f"**Địa chỉ:** {r_data.get('Address',{}).get('Detail')}")
                         
-                        # Chia cột: Ảnh bên trái - Thông tin bên phải
-                        c_img, c_info = st.columns([1, 2])
-                        with c_img:
-                            if r_data.get('MediaURL'):
-                                st.image(r_data['MediaURL'], use_container_width=True, caption="Hiện trường")
-                            else:
-                                st.info("Không có ảnh")
-                        
-                        with c_info:
-                            st.warning(f"📅 Deadline: {task.get('deadline', 'Chưa có')}")
-                            st.write(f"📍 **Địa chỉ:** {r_data.get('Address',{}).get('Detail')}")
-                            st.write(f"📝 **Mô tả công việc:** {task.get('description')}")
-                            
+                        # Xem chi tiết ảnh
+                        with st.expander("Xem chi tiết Báo cáo gốc"):
+                            st.write(f"**Nội dung:** {r_data.get('Content')}")
+                            if r_data.get('MediaURL'): st.image(r_data['MediaURL'], width=300)
+
                         if st.button("🚀 XÁC NHẬN NHẬN VIỆC", key=f"acc_{tid}"):
+                            # Chuyển trạng thái -> Chờ báo cáo vật tư
                             api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "WAITING_FOR_MATERIAL_REPORT"}, headers=headers)
                             st.success("Đã nhận! Chuyển sang Tab 'Đang xử lý'."); time.sleep(1); st.rerun()
 
@@ -385,7 +357,7 @@ def view_technician(headers):
             with tab2:
                 if not active_tasks: st.write("Chưa có nhiệm vụ đang làm.")
                 for task in active_tasks:
-                    tid = task.get('id') or task.get('TaskId')
+                    tid = task.get('id') or task.get('taskCode')
                     status = task.get('status')
                     report_id = task.get("reportId")
                     
@@ -393,26 +365,10 @@ def view_technician(headers):
                     r_data = r_res.json() if r_res and r_res.status_code == 200 else {}
                     
                     with st.expander(f"[{status}] {task.get('title')}", expanded=True):
-                        # Chia cột hiển thị chi tiết
-                        col_img, col_info = st.columns([1, 2])
+                        st.write(f"**Địa chỉ:** {r_data.get('Address',{}).get('Detail')}")
+                        st.info(f"Yêu cầu: {task.get('description')}")
                         
-                        with col_img:
-                            st.markdown("**📸 Ảnh hiện trường:**")
-                            if r_data.get('MediaURL'):
-                                st.image(r_data['MediaURL'], use_container_width=True)
-                            else:
-                                st.info("Không có ảnh.")
-
-                        with col_info:
-                            st.warning(f"📅 **Deadline:** {task.get('deadline', 'Chưa thiết lập')}")
-                            st.write(f"📍 **Địa chỉ:** {r_data.get('Address',{}).get('Detail')}")
-                            st.info(f"📋 **Yêu cầu:** {task.get('description')}")
-                        
-                        st.divider()
-
-                        # --- QUY TRÌNH XỬ LÝ ---
-                        
-                        # 1. Báo cáo vật tư
+                        # BƯỚC 1: BÁO CÁO VẬT TƯ
                         if status == "WAITING_FOR_MATERIAL_REPORT":
                             st.write("#### 📦 Bước 1: Báo cáo vật tư")
                             uploaded_mat = st.file_uploader("Upload file Excel/Word:", key=f"mat_{tid}")
@@ -425,38 +381,37 @@ def view_technician(headers):
                                     st.success("Đã gửi! Chờ duyệt."); st.rerun()
                                 else: st.error("Chưa chọn file hoặc lỗi upload!")
 
-                        # 2. Chờ duyệt vật tư
+                        # CHỜ DUYỆT
                         elif status == "WAITING_FOR_APPROVAL":
                             st.warning("⏳ Đang chờ Manager duyệt vật tư...")
 
-                        # 3. Đã duyệt -> Bắt đầu sửa
+                        # BƯỚC 2: BẮT ĐẦU SỬA
                         elif status == "APPROVED_WAITING_FOR_FIX":
-                            st.success("✅ Vật tư đã duyệt! Hãy tiến hành sửa chữa.")
+                            st.success("✅ Vật tư đã duyệt!")
                             if st.button("🛠️ Bắt đầu sửa chữa", key=f"fix_{tid}"):
                                 api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "IN_PROGRESS"}, headers=headers)
                                 st.rerun()
 
-                        # 4. Đang sửa -> Báo cáo kết quả
+                        # BƯỚC 3: BÁO CÁO KẾT QUẢ
                         elif status == "IN_PROGRESS":
                             st.write("#### 📸 Bước 3: Báo cáo kết quả")
-                            uploaded_res = st.file_uploader("Ảnh/Video kết quả sau khi sửa:", key=f"res_{tid}")
-                            if st.button("✅ Xác nhận hoàn thành", key=f"btn_res_{tid}"):
+                            uploaded_res = st.file_uploader("Ảnh/Video kết quả:", key=f"res_{tid}")
+                            if st.button("✅ Xác nhận xử lý xong", key=f"btn_res_{tid}"):
                                 url = upload_file_to_media_service(uploaded_res)
                                 if url:
                                     new_desc = task.get('description') + f"\n[Kết quả]: {url}"
                                     api_request("PUT", f"{TASK_SERVICE_URL}/api/tasks/{tid}", json={"description": new_desc}, headers=headers)
                                     api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "WAITING_FOR_RESULT_APPROVAL"}, headers=headers)
                                     st.success("Đã báo cáo! Chờ nghiệm thu."); st.rerun()
-                                else: st.error("Bắt buộc phải có ảnh minh chứng!")
+                                else: st.error("Thiếu ảnh minh chứng!")
 
-                        # 5. Chờ nghiệm thu
+                        # CHỜ NGHIỆM THU
                         elif status == "WAITING_FOR_RESULT_APPROVAL":
                             st.warning("⏳ Đang chờ Manager nghiệm thu kết quả...")
 
             with tab3:
                 st.dataframe(pd.DataFrame(done_tasks))
-    else: 
-        st.error("Không thể tải danh sách nhiệm vụ. Vui lòng thử lại sau.")
+    else: st.error("Lỗi tải nhiệm vụ.")
 
 # ==========================================
 # MAIN APP FLOW
