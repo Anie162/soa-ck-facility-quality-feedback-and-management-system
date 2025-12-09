@@ -43,13 +43,13 @@ def reset_form():
     if 'uploader_key' not in st.session_state: st.session_state.uploader_key = 0
     st.session_state.uploader_key += 1
     # Reset các biến session state cho input
-    st.session_state["content_input"] = ""
-    st.session_state["other_incident_input"] = ""
-    st.session_state["detail_input"] = ""
-    st.session_state["street_input"] = ""
-    st.session_state["ward_input"] = ""
-    st.session_state["district_input"] = ""
-    st.session_state["city_input"] = "TP. Hồ Chí Minh"
+    # st.session_state["content_input"] = ""
+    # st.session_state["other_incident_input"] = ""
+    # st.session_state["detail_input"] = ""
+    # st.session_state["street_input"] = ""
+    # st.session_state["ward_input"] = ""
+    # st.session_state["district_input"] = ""
+    # st.session_state["city_input"] = "TP. Hồ Chí Minh"
 
 def api_request(method, url, **kwargs):
     try:
@@ -157,24 +157,24 @@ def logout_handler():
 def view_resident(headers):
     st.title("🏙️ Cổng Phản Ánh Đô Thị")
     tab1, tab2 = st.tabs(["📝 Gửi Phản Ánh", "🗂️ Lịch Sử"])
-
+    form_id = st.session_state.get('uploader_key', 0)
     with tab1:
         c1, c2 = st.columns(2)
         with c1:
             incident_key = st.selectbox("Loại sự cố (*)", list(INCIDENT_TYPES.keys()), format_func=lambda x: INCIDENT_TYPES[x])
             other_detail = ""
             if incident_key == "OTHER":
-                other_detail = st.text_input("Chi tiết sự cố khác:", key="other_incident_input")
-            content = st.text_area("Mô tả chi tiết (*)", height=120, key="content_input")
-            uploaded = st.file_uploader("Ảnh hiện trường", type=['jpg','png'], key=f"up_{st.session_state.get('uploader_key',0)}")
+                other_detail = st.text_input("Chi tiết...", key=f"other_{form_id}")
+            content = st.text_area("Mô tả (*)", height=120, key=f"content_{form_id}")
+            uploaded = st.file_uploader("Ảnh", type=['jpg','png'], key=f"up_{form_id}")
             media_url = image_to_base64(uploaded)
         with c2:
             st.write("📍 **Vị trí sự cố**")
-            detail = st.text_input("Số nhà/Ngõ", key="detail_input")
-            street = st.text_input("Đường/Phố", key="street_input")
-            ward = st.text_input("Phường/Xã", key="ward_input")
-            district = st.text_input("Quận/Huyện", key="district_input")
-            city = st.text_input("Tỉnh/Thành phố", value="TP. Hồ Chí Minh", key="city_input")
+            detail = st.text_input("Số nhà/Ngõ", key=f"detail_{form_id}")
+            street = st.text_input("Đường/Phố", key=f"street_{form_id}")
+            ward = st.text_input("Phường/Xã", key=f"ward_{form_id}")
+            district = st.text_input("Quận/Huyện", key=f"district_{form_id}")
+            city = st.text_input("Tỉnh/Thành phố", value="TP. HCM", key=f"city_{form_id}")
 
         if st.button("🚀 Gửi Phản Ánh", type="primary"):
             if not media_url: st.warning("Vui lòng đính kèm ảnh minh họa.")
