@@ -381,7 +381,7 @@ def view_technician(headers):
                 if not new_tasks: st.write("Không có nhiệm vụ mới.")
                 for task in new_tasks:
                     # Lấy ID an toàn (ưu tiên _id, id, TaskId...)
-                    tid = str(task.get('_id') or task.get('id') or task.get('TaskId') or task.get('taskCode') or '')
+                    tid = str(task.get('taskCode') or task.get('taskId') or task.get('_id') or '')
                     
                     report_id = task.get("reportId") or task.get("ReportId")
                     
@@ -430,9 +430,6 @@ def view_technician(headers):
             with tab2:
                 if not active_tasks: st.write("Chưa có nhiệm vụ đang làm.")
                 for task in active_tasks:
-                    if not task.get('taskCode'):
-                        st.error(f"⚠️ Task này bị lỗi thiếu taskCode! ID: {task.get('_id')}")
-                        st.json(task) # In hết ruột gan nó ra xem
                     tid = str(task.get('taskCode') or task.get('taskId') or task.get('_id') or '')
                     status = task.get('status')
                     report_id = task.get("reportId")
