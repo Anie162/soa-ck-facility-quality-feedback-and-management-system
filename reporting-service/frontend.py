@@ -216,13 +216,14 @@ def view_resident(headers):
                                         if res_c and res_c.status_code == 200: st.success("Đã ghi nhận khiếu nại!"); time.sleep(1); st.rerun()
 
 # ==========================================
-# GIAO DIỆN: MANAGER
+# GIAO DIỆN: MANAGER (ĐÃ CẬP NHẬT LOGIC REJECT)
 # ==========================================
 def view_manager(headers):
     st.title("👮 Trung Tâm Điều Hành")
     tasks_res = api_request("GET", f"{TASK_SERVICE_URL}/api/tasks", headers=headers)
     tasks = tasks_res.json() if tasks_res and tasks_res.status_code == 200 else []
     
+    # Lọc các task cần duyệt
     approval_tasks = [t for t in tasks if t.get('status') in ["WAITING_FOR_APPROVAL", "WAITING_FOR_RESULT_APPROVAL"]]
     
     if approval_tasks:
@@ -230,25 +231,58 @@ def view_manager(headers):
         for task in approval_tasks:
             status = task.get('status')
             tid = task.get('id') or task.get('TaskId')
+            
             with st.container(border=True):
                 st.subheader(f"Duyệt Task: {task.get('title')}")
                 st.write(f"**KTV:** {task.get('technicianId')}")
                 st.info(f"Chi tiết/Link: {task.get('description')}")
+                
+                # Chia 2 cột: C1 (Duyệt), C2 (Từ chối)
                 c1, c2 = st.columns(2)
+                
+                # --- TRƯỜNG HỢP 1: DUYỆT VẬT TƯ ---
                 if status == "WAITING_FOR_APPROVAL":
                     with c1:
                         if st.button("✅ Duyệt Vật Tư", key=f"ok_mat_{tid}"):
-                            api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "APPROVED_WAITING_FOR_FIX"}, headers=headers)
-                            st.success("Đã duyệt!"); time.sleep(1); st.rerun()
+                            # Chuyển sang APPROVED (KTV sẽ thấy nút Bắt đầu sửa)
+                            api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "APPROVED"}, headers=headers)
+                            st.success("Đã duyệt vật tư!"); time.sleep(1); st.rerun()
+
+                # --- TRƯỜNG HỢP 2: DUYỆT NGHIỆM THU (KẾT QUẢ) ---
                 elif status == "WAITING_FOR_RESULT_APPROVAL":
+                    # Cột 1: Nút Duyệt (Thành công)
                     with c1:
                         if st.button("✅ Duyệt Nghiệm Thu (Hoàn tất)", key=f"ok_res_{tid}"):
+                            # 1. Update Task -> COMPLETED
                             api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "COMPLETED"}, headers=headers)
+                            
+                            # 2. Update Report -> COMPLETED
                             report_id = task.get('reportId')
                             api_request("PATCH", f"{REPORT_SERVICE_URL}/api/report/reports/{report_id}/status", params={"status": "COMPLETED", "note": "Đã nghiệm thu và hoàn tất."}, headers=headers)
+                            
                             st.success("Hoàn tất quy trình!"); time.sleep(1.5); st.rerun()
+                    
+                    # Cột 2: Nút Từ chối (Yêu cầu làm lại) -> MỚI THÊM VÀO
+                    with c2:
+                        with st.popover("❌ Từ chối / Làm lại"):
+                            reject_reason = st.text_input("Lý do chưa đạt:", key=f"reason_{tid}")
+                            if st.button("Xác nhận trả về", key=f"btn_rej_{tid}", type="primary"):
+                                if not reject_reason:
+                                    st.error("Vui lòng nhập lý do!")
+                                else:
+                                    # 1. Ghi lý do vào description cũ
+                                    old_desc = task.get('description', '')
+                                    new_desc = f"{old_desc}\n\n[MANAGER TỪ CHỐI]: {reject_reason}"
+                                    api_request("PUT", f"{TASK_SERVICE_URL}/api/tasks/{tid}", json={"description": new_desc}, headers=headers)
+                                    
+                                    # 2. Đẩy trạng thái lùi về PROCESSING
+                                    api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "PROCESSING"}, headers=headers)
+                                    
+                                    st.warning("Đã trả hồ sơ về cho KTV xử lý lại!"); time.sleep(1.5); st.rerun()
 
     st.divider()
+    
+    # --- PHẦN QUẢN LÝ DANH SÁCH REPORT (GIỮ NGUYÊN) ---
     res = api_request("GET", f"{REPORT_SERVICE_URL}/api/report/reports", headers=headers)
     if not res: return
     reports = res.json()
@@ -275,6 +309,8 @@ def view_manager(headers):
                         st.write(f"**Mô tả:** {r.get('Content')}")
                         st.write("---")
                         st.write("#### 🛠️ Giao Việc")
+                        
+                        # Logic lấy danh sách KTV (Đã sửa ưu tiên UserID)
                         tech_res = api_request("GET", f"{GENERAL_SERVICE_URL}/api/users/role/Technician", headers=headers)
                         tech_list = tech_res.json() if (tech_res and tech_res.status_code == 200) else []
                         
@@ -282,7 +318,6 @@ def view_manager(headers):
                             tech_opts = {}
                             for t in tech_list:
                                 tid = str(t.get('UserID') or t.get('userID') or t.get('_id'))
-        
                                 tname = t.get('Name') or t.get('name') or t.get('username') or "Noname"
                                 tech_opts[tid] = f"{tname}"
                             sel_tech_id = st.selectbox("Chọn KTV:", list(tech_opts.keys()), format_func=lambda x: tech_opts[x])
@@ -294,7 +329,14 @@ def view_manager(headers):
                         
                         if st.button("🚀 Giao Việc"):
                             deadline_str = deadline_date.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-                            payload = {"reportId": r["ReportId"], "technicianId": sel_tech_id, "managerId": headers["user-id"], "title": f"Xử lý: {r['Title']}", "description": task_desc, "deadline": deadline_str}
+                            payload = {
+                                "reportId": r["ReportId"], 
+                                "technicianId": sel_tech_id, 
+                                "managerId": headers["user-id"], 
+                                "title": f"Xử lý: {r['Title']}", 
+                                "description": task_desc, 
+                                "deadline": deadline_str
+                            }
                             t_res = api_request("POST", f"{TASK_SERVICE_URL}/api/tasks", json=payload, headers=headers)
                             if t_res and t_res.status_code in [200, 201]:
                                 api_request("PATCH", f"{REPORT_SERVICE_URL}/api/report/reports/{selected_id}/status", params={"status": "IN_PROGRESS", "note": f"Giao cho {sel_tech_id}"}, headers=headers)
@@ -326,8 +368,8 @@ def view_technician(headers):
             st.info("🎉 Không có nhiệm vụ nào.")
         else:
             # Phân loại task
-            new_tasks = [t for t in all_tasks if t.get('status') == "ASSIGNED"]
-            active_tasks = [t for t in all_tasks if t.get('status') not in ["ASSIGNED", "COMPLETED"]]
+            new_tasks = [t for t in all_tasks if t.get('status') == "PENDING"]
+            active_tasks = [t for t in all_tasks if t.get('status') not in ["PENDING", "COMPLETED"]]
             done_tasks = [t for t in all_tasks if t.get('status') == "COMPLETED"]
 
             tab1, tab2, tab3 = st.tabs([f"🆕 Mới ({len(new_tasks)})", f"🚧 Đang xử lý ({len(active_tasks)})", f"✅ Xong ({len(done_tasks)})"])
@@ -361,7 +403,7 @@ def view_technician(headers):
                             st.caption(f"Nội dung gốc: {r_data.get('Content')}")
 
                         if st.button("🚀 XÁC NHẬN NHẬN VIỆC", key=f"acc_{tid}"):
-                            api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "WAITING_FOR_MATERIAL_REPORT"}, headers=headers)
+                            api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "WAITING_MATERIAL_LIST"}, headers=headers)
                             st.success("Đã nhận! Chuyển sang Tab 'Đang xử lý'."); time.sleep(1); st.rerun()
 
             # --- TAB 2: ĐANG XỬ LÝ (Đã cập nhật hiển thị) ---
@@ -392,9 +434,8 @@ def view_technician(headers):
                         
                         st.divider()
 
-                        # --- CÁC BƯỚC XỬ LÝ (Logic giữ nguyên) ---
                         # BƯỚC 1: BÁO CÁO VẬT TƯ
-                        if status == "WAITING_FOR_MATERIAL_REPORT":
+                        if status == "WAITING_MATERIAL_LIST":
                             st.write("#### 📦 Bước 1: Báo cáo vật tư")
                             uploaded_mat = st.file_uploader("Upload file Excel/Word:", key=f"mat_{tid}")
                             if st.button("Gửi báo cáo vật tư", key=f"btn_mat_{tid}"):
@@ -402,23 +443,23 @@ def view_technician(headers):
                                 if url:
                                     new_desc = task.get('description') + f"\n[Vật tư]: {url}"
                                     api_request("PUT", f"{TASK_SERVICE_URL}/api/tasks/{tid}", json={"description": new_desc}, headers=headers)
-                                    api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "WAITING_FOR_APPROVAL"}, headers=headers)
+                                    api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "WAITING_APPROVAL"}, headers=headers)
                                     st.success("Đã gửi! Chờ duyệt."); st.rerun()
                                 else: st.error("Chưa chọn file hoặc lỗi upload!")
 
                         # CHỜ DUYỆT
-                        elif status == "WAITING_FOR_APPROVAL":
+                        elif status == "WAITING_APPROVAL":
                             st.warning("⏳ Đang chờ Manager duyệt vật tư...")
 
                         # BƯỚC 2: BẮT ĐẦU SỬA
-                        elif status == "APPROVED_WAITING_FOR_FIX":
+                        elif status == "APPROVED":
                             st.success("✅ Vật tư đã duyệt!")
                             if st.button("🛠️ Bắt đầu sửa chữa", key=f"fix_{tid}"):
-                                api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "IN_PROGRESS"}, headers=headers)
+                                api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "PROCESSING"}, headers=headers)
                                 st.rerun()
 
                         # BƯỚC 3: BÁO CÁO KẾT QUẢ
-                        elif status == "IN_PROGRESS":
+                        elif status == "PROCESSING":
                             st.write("#### 📸 Bước 3: Báo cáo kết quả")
                             uploaded_res = st.file_uploader("Ảnh/Video kết quả:", key=f"res_{tid}")
                             if st.button("✅ Xác nhận xử lý xong", key=f"btn_res_{tid}"):
@@ -426,12 +467,12 @@ def view_technician(headers):
                                 if url:
                                     new_desc = task.get('description') + f"\n[Kết quả]: {url}"
                                     api_request("PUT", f"{TASK_SERVICE_URL}/api/tasks/{tid}", json={"description": new_desc}, headers=headers)
-                                    api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "WAITING_FOR_RESULT_APPROVAL"}, headers=headers)
+                                    api_request("PATCH", f"{TASK_SERVICE_URL}/api/tasks/{tid}/status", json={"status": "WAITING_RESULT_APPROVAL"}, headers=headers)
                                     st.success("Đã báo cáo! Chờ nghiệm thu."); st.rerun()
                                 else: st.error("Thiếu ảnh minh chứng!")
 
                         # CHỜ NGHIỆM THU
-                        elif status == "WAITING_FOR_RESULT_APPROVAL":
+                        elif status == "WAITING_RESULT_APPROVAL":
                             st.warning("⏳ Đang chờ Manager nghiệm thu kết quả...")
 
             with tab3:
