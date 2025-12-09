@@ -126,7 +126,7 @@ def render_auth_sidebar():
                         "role": "Citizen" # <--- MẶC ĐỊNH ROLE LÀ USER (CITIZEN)
                     }
                     # Gọi API Register (Giả định endpoint là /api/auth/register hoặc /api/users)
-                    res = api_request("POST", f"{GENERAL_SERVICE_URL}/api/users", json=payload)
+                    res = api_request("POST", f"{GENERAL_SERVICE_URL}/api/users/register", json=payload)
                     
                     if res and res.status_code in [200, 201]:
                         st.success("Đăng ký thành công! Vui lòng đăng nhập.")
@@ -150,7 +150,7 @@ def render_auth_sidebar():
             
             if submitted:
                 # Gọi API Forgot Password (Giả định)
-                # res = api_request("POST", f"{GENERAL_SERVICE_URL}/api/auth/forgot-password", json={"email": email_forgot})
+                res = api_request("POST", f"{GENERAL_SERVICE_URL}/api/users/reset-password", json={"email": email_forgot})
                 
                 # Vì thường đồ án chưa làm kỹ phần gửi mail, ta giả lập thành công
                 st.success(f"Nếu email {email_forgot} tồn tại, chúng tôi đã gửi hướng dẫn cho bạn.")
