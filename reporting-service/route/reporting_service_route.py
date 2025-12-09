@@ -9,7 +9,14 @@ router = APIRouter()
 
 GENERAL_SERVICE_URL = "https://general-service-u75j.onrender.com/api/users"
 
-# --- AUTH HELPERS ---
+# --- AUTH HELPERS (CŨ - GIỮ LẠI ĐỂ CÁC ENDPOINT KHÁC KHÔNG BỊ LỖI) ---
+def get_user_role(x_role: str = Header("USER", alias="X-Role")):
+    return x_role
+
+def get_user_id_from_header(x_user_id: str = Header(..., alias="user-id")):
+    return x_user_id
+
+# --- AUTH HELPERS (MỚI - DÙNG CHO CREATE REPORT) ---
 async def verify_user_from_general_service(user_id: str = Header(..., alias="user-id")):
     """
     Hàm này sẽ:
@@ -29,7 +36,6 @@ async def verify_user_from_general_service(user_id: str = Header(..., alias="use
             users_list = response.json()
             
             # Tìm user có UserID khớp với header gửi lên
-            # (Do endpoint trả về list nên phải dùng vòng lặp để tìm)
             target_user = next((u for u in users_list if u.get("UserID") == user_id), None)
             
             if not target_user:
@@ -38,7 +44,7 @@ async def verify_user_from_general_service(user_id: str = Header(..., alias="use
             # Trả về thông tin user đã xác thực
             return {
                 "UserID": target_user["UserID"],
-                "Role": target_user["Role"], # Lấy Role thật từ DB, an toàn hơn tin vào Header X-Role
+                "Role": target_user["Role"], 
                 "Email": target_user.get("Email")
             }
 
@@ -64,18 +70,16 @@ def report_serializer(report) -> dict:
 
 # --- CREATE REPORT ---
 @router.post("/reports", response_model=dict)
-async def create_report( # <--- Chuyển thành async vì verify_user là async
+async def create_report(
     report_input: ReportCreate,
-    user_info: dict = Depends(verify_user_from_general_service) # <--- Dùng hàm mới
+    user_info: dict = Depends(verify_user_from_general_service) # Dùng hàm verify mới
 ):
-    user_id = user_info["UserID"] # Lấy ID đã verify
-    # user_role = user_info["Role"] # Bạn có thể lấy Role chuẩn ở đây nếu cần logic khác
+    user_id = user_info["UserID"]
     
     report_data = report_input.dict()
     auto_title = f"Sự cố hạ tầng - {report_input.IncidentType.value}"
     report_data["Title"] = auto_title
     
-    # ... (Giữ nguyên logic tạo ID cũ)
     current_count = reports_collection.count_documents({"UserID": user_id})
     next_seq = current_count + 1
     report_id = f"RP{user_id}{next_seq:02d}"
@@ -91,26 +95,22 @@ async def create_report( # <--- Chuyển thành async vì verify_user là async
     return {"message": "Report created", "data": report_serializer(new_report)}
 
 # --- UPDATE REPORT DETAILS (PUT) ---
-# Dùng để sửa nội dung (Title, Content, Address...) -> TECHNICIAN KHÔNG ĐƯỢC DÙNG
 @router.put("/reports/{report_id}", response_model=dict)
 def update_report(
     report_id: str, 
     updated_data: ReportBase,
-    role: str = Depends(get_user_role)
+    role: str = Depends(get_user_role) # Vẫn dùng hàm cũ
 ):
-    # 1. CHẶN TECHNICIAN
     if role == "TECHNICIAN":
         raise HTTPException(
             status_code=403, 
             detail="Permission denied: Technicians cannot modify report details. Please contact Manager."
         )
 
-    # 2. Xử lý dữ liệu
     update_data_dict = {k: v for k, v in updated_data.dict().items() if v is not None}
     if not update_data_dict:
          raise HTTPException(status_code=400, detail="No data provided to update")
 
-    # 3. Chặn sửa Status ở endpoint này (trừ Manager)
     if "Status" in update_data_dict and role != "MANAGER":
          raise HTTPException(status_code=403, detail="Permission denied: Only MANAGER can update status via this endpoint.")
 
@@ -133,19 +133,16 @@ def update_report(
     return {"message": "Report updated", "data": report_serializer(report)}
 
 # --- UPDATE STATUS & NOTE (PATCH) ---
-# Dùng cho quy trình xử lý: Manager duyệt, Technician báo cáo xong
 @router.patch("/reports/{report_id}/status", response_model=dict)
 def update_report_status(
     report_id: str, 
     status: ReportStatus, 
     note: Optional[str] = Query(None, description="Ghi chú lý do"), 
-    role: str = Depends(get_user_role)
+    role: str = Depends(get_user_role) # Vẫn dùng hàm cũ
 ):
-    # 1. Kiểm tra quyền: Chỉ MANAGER và TECHNICIAN mới được update tiến độ
     if role not in ["MANAGER", "TECHNICIAN"]:
         raise HTTPException(status_code=403, detail="Permission denied.")
 
-    # 2. Logic dành riêng cho MANAGER (Reject bắt buộc có Note)
     if role == "MANAGER":
         if status == ReportStatus.REJECTED and not note:
             raise HTTPException(
@@ -153,7 +150,6 @@ def update_report_status(
                 detail="Manager must provide a reason (Note) when rejecting a report."
             )
 
-    # 3. Thực hiện update
     update_fields = {
         "Status": status,
         "Updated_at": datetime.utcnow()
@@ -176,8 +172,8 @@ def update_report_status(
 # --- GET ALL & FILTER ---
 @router.get("/reports", response_model=list)
 def get_reports(
-    caller_id: str = Depends(get_user_id_from_header),
-    caller_role: str = Depends(get_user_role),
+    caller_id: str = Depends(get_user_id_from_header), # Vẫn dùng hàm cũ
+    caller_role: str = Depends(get_user_role),         # Vẫn dùng hàm cũ
     
     reporter_id: Optional[str] = Query(None),
     status: Optional[ReportStatus] = Query(None),
@@ -190,15 +186,11 @@ def get_reports(
 ):
     query = {}
 
-    # Logic phân quyền xem
     if caller_role in ["MANAGER", "TECHNICIAN"]:
-        # Manager và Technician được xem tất cả
         if reporter_id: query["UserID"] = reporter_id
     else:
-        # User thường chỉ xem của mình
         query["UserID"] = caller_id 
 
-    # Các bộ lọc khác
     if status: query["Status"] = status
     if incident_type: query["IncidentType"] = incident_type
     if city: query["Address.City"] = city
