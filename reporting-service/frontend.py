@@ -190,8 +190,9 @@ def view_resident(headers):
                 if res and res.status_code == 200:
                     st.success(f"✅ Gửi thành công! Mã: **{res.json()['data']['ReportId']}**")
                     reset_form(); time.sleep(1.5); st.rerun()
-                else: st.error("Gửi thất bại.")
-
+                else: 
+                    error_msg = res.text if res else "Lỗi kết nối Server"
+                    st.error(f"Gửi thất bại. Chi tiết: {error_msg}")
     with tab2:
         res = api_request("GET", f"{REPORT_SERVICE_URL}/api/report/reports", params={"reporter_id": headers["user-id"]}, headers=headers)
         if res and res.status_code == 200:
@@ -450,7 +451,7 @@ else:
     user = st.session_state.user_info
     raw_role = user.get("Role") or user.get("role", "")
     role_check = str(raw_role).lower().strip()
-    uid = str(user.get("_id") or user.get("id"))
+    uid = str(user.get("UserID") or user.get("userID") or user.get("_id"))
     req_headers = {"user-id": uid, "X-Role": raw_role}
     
     if role_check == "manager": view_manager(req_headers)
